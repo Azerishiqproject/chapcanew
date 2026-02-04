@@ -138,24 +138,25 @@ export default function TextCaptcha({ onVerify }: TextCaptchaProps) {
   );
 
   return (
-    <div className="w-full font-sans bg-transparent h-full flex flex-col pt-6 px-5">
-      {/* Remove Top Gradient Overlay that causes design error */}
+    <div className="w-full font-sans bg-white h-auto flex flex-col pt-5 pb-6 px-4 relative rounded-[24px] shadow-xl overflow-hidden border border-gray-100">
+      {/* Top Gradient Overlay from image */}
+      <div className="absolute top-0 left-0 right-0 h-20 bg-gradient-to-b from-[#e0f7fa] to-transparent pointer-events-none opacity-60" />
 
-      <h3 className="text-[16px] font-black uppercase tracking-tight text-white mb-6 relative z-10 leading-snug">
+      <h3 className="text-[14px] font-bold text-gray-900 mb-4 relative z-10 leading-snug px-1">
         Şəkildəki mətni daxil edin:
       </h3>
 
-      <div className="flex justify-center mb-8 relative z-10 rounded-2xl overflow-hidden p-2 bg-white/5 border border-white/10 shadow-2xl">
-        <canvas ref={canvasRef} className="rounded-xl border border-white/10 shadow-inner" />
+      <div className="flex justify-center mb-5 relative z-10 rounded-2xl overflow-hidden p-2 bg-gray-50 border border-gray-200 shadow-inner">
+        <canvas ref={canvasRef} className="rounded-xl border border-gray-200 shadow-sm max-w-full" />
       </div>
 
       {/* Input Area */}
-      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 mb-10 relative z-10 shadow-2xl">
-        <div className="flex justify-center items-end gap-3 px-0">
+      <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 mb-5 relative z-10 shadow-sm mx-0.5">
+        <div className="flex justify-center items-end gap-1 px-0">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex flex-col items-center">
-              <div className="w-14 h-16 bg-white/10 border border-white/10 rounded-xl shadow-inner flex items-center justify-center text-2xl font-black text-[#00965e] relative lowercase">
-                {userInput[i] ? userInput[i] : <span className="absolute bottom-4 text-white/20 font-normal">_</span>}
+              <div className="w-9 h-11 bg-white border border-gray-200 rounded-lg shadow-sm flex items-center justify-center text-lg font-black text-gray-800 relative lowercase italic">
+                {userInput[i] ? userInput[i] : <span className="absolute bottom-2.5 text-gray-300 font-normal">_</span>}
               </div>
             </div>
           ))}
@@ -173,7 +174,7 @@ export default function TextCaptcha({ onVerify }: TextCaptchaProps) {
         />
 
         {error && (
-          <div className="absolute -bottom-8 left-0 right-0 text-center text-red-500 text-sm font-black uppercase tracking-wider transition-all">
+          <div className="absolute -bottom-6 left-0 right-0 text-center text-red-500 text-[10px] font-bold uppercase tracking-wider transition-all">
             {error}
           </div>
         )}
@@ -182,7 +183,7 @@ export default function TextCaptcha({ onVerify }: TextCaptchaProps) {
       <button
         onClick={handleVerify}
         disabled={userInput.length < 5}
-        className="w-full h-14 bg-gradient-to-r from-[#00965e] to-[#4fbfa3] text-white font-black uppercase tracking-wider rounded-2xl shadow-xl shadow-[#00965e]/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:shadow-none relative z-10 mt-auto border border-white/10"
+        className="w-full h-11 bg-[#00965e] text-white font-black uppercase tracking-wider rounded-lg shadow-[0_2px_0_rgb(0,100,60)] active:shadow-none translate-y-[-2px] active:translate-y-0 transition-all disabled:opacity-50 disabled:translate-y-0 disabled:shadow-none relative z-10 mt-auto border border-white/10 text-[13px]"
       >
         Təsdiqlə
       </button>

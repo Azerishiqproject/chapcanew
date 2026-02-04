@@ -790,10 +790,10 @@ export default function ChapcaPage() {
                       <div
                         key={index}
                         className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${index === currentChapcaIndex
-                            ? 'bg-[#00965e] scale-125 shadow-lg shadow-[#00965e]/50'
-                            : index < currentChapcaIndex
-                              ? 'bg-emerald-500'
-                              : 'bg-white/20'
+                          ? 'bg-[#00965e] scale-125 shadow-lg shadow-[#00965e]/50'
+                          : index < currentChapcaIndex
+                            ? 'bg-emerald-500'
+                            : 'bg-white/20'
                           }`}
                       />
                     ))}
@@ -802,65 +802,54 @@ export default function ChapcaPage() {
               )}
             </div>
 
-            <div className="text-center mb-12">
-              <h2 className="text-5xl font-black uppercase tracking-tighter text-white mb-4">
-                {playableChapcas[currentChapcaIndex] === 'tarih'
-                  ? 'Bugünkü Tarix Chapca'
-                  : playableChapcas[currentChapcaIndex] === 'dogum'
-                    ? 'Doğum Tarixi Chapca'
-                    : playableChapcas[currentChapcaIndex] === 'text'
-                      ? 'Mətn Chapca'
-                      : 'Rəqəm Chapca'}
-              </h2>
-              <p className="text-xl text-white/40 mb-6 font-bold">
-                {playableChapcas[currentChapcaIndex] === 'tarih'
-                  ? 'Bugünkü tarixi daxil edərək təsdiq edin'
-                  : playableChapcas[currentChapcaIndex] === 'dogum'
-                    ? 'Doğum tarixinizi daxil edərək təsdiq edin'
-                    : playableChapcas[currentChapcaIndex] === 'text'
-                      ? 'Şəkildəki mətni daxil edərək təsdiq edin'
-                      : 'Göstərilən rəqəmləri seçərək təsdiq edin'}
-              </p>
+            {/* Chapca Container */}
+            <div className="max-w-[380px] mx-auto relative group">
+              <div className="relative">
+                {/* Header Information (Small & Professional) */}
+                <div className="flex justify-between items-center mb-6 px-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-[#00965e] animate-pulse"></div>
+                    <span className="text-[12px] font-black uppercase tracking-[3px] text-white/40">Sessiya Aktivdir</span>
+                  </div>
 
-              {/* Gerçek Zamanlı Timer */}
-              <div className="inline-flex items-center gap-3 px-8 py-4 bg-[#00965e]/10 backdrop-blur-xl rounded-2xl border border-[#00965e]/20 shadow-2xl">
-                <svg className="w-6 h-6 text-[#00965e]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-3xl font-mono font-black text-[#00965e] tabular-nums">
-                  {formatTime(currentTime)}
-                </span>
+                  {/* Gerçek Zamanlı Timer (Minimalist) */}
+                  <div className="flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-md rounded-full border border-white/10">
+                    <span className="text-[14px] font-mono font-bold text-[#00965e] tabular-nums">
+                      {formatTime(currentTime)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Chapca Components */}
+                {playableChapcas.length > 0 && playableChapcas[currentChapcaIndex] && (
+                  <div className="animate-in fade-in zoom-in-95 duration-500">
+                    {playableChapcas[currentChapcaIndex] === 'tarih' ? (
+                      <DateCaptcha
+                        key={`tarih-${currentChapcaIndex}-${dateCaptchaKey}`}
+                        correctDate={correctDate}
+                        onVerify={handleDateVerify}
+                      />
+                    ) : playableChapcas[currentChapcaIndex] === 'dogum' ? (
+                      <BirthDateCaptcha
+                        key={`dogum-${currentChapcaIndex}-${birthDateCaptchaKey}`}
+                        correctDate={correctBirthDate}
+                        onVerify={handleBirthDateVerify}
+                      />
+                    ) : playableChapcas[currentChapcaIndex] === 'text' ? (
+                      <TextCaptcha
+                        key={`text-${currentChapcaIndex}-${textCaptchaKey}`}
+                        onVerify={handleTextVerify}
+                      />
+                    ) : (
+                      <NumberCaptcha
+                        key={`rakam-${currentChapcaIndex}-${numberCaptchaKey}`}
+                        onVerify={handleNumberVerify}
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             </div>
-
-            {/* Chapca Components */}
-            {playableChapcas.length > 0 && playableChapcas[currentChapcaIndex] && (
-              <>
-                {playableChapcas[currentChapcaIndex] === 'tarih' ? (
-                  <DateCaptcha
-                    key={`tarih-${currentChapcaIndex}-${dateCaptchaKey}`}
-                    correctDate={correctDate}
-                    onVerify={handleDateVerify}
-                  />
-                ) : playableChapcas[currentChapcaIndex] === 'dogum' ? (
-                  <BirthDateCaptcha
-                    key={`dogum-${currentChapcaIndex}-${birthDateCaptchaKey}`}
-                    correctDate={correctBirthDate}
-                    onVerify={handleBirthDateVerify}
-                  />
-                ) : playableChapcas[currentChapcaIndex] === 'text' ? (
-                  <TextCaptcha
-                    key={`text-${currentChapcaIndex}-${textCaptchaKey}`}
-                    onVerify={handleTextVerify}
-                  />
-                ) : (
-                  <NumberCaptcha
-                    key={`rakam-${currentChapcaIndex}-${numberCaptchaKey}`}
-                    onVerify={handleNumberVerify}
-                  />
-                )}
-              </>
-            )}
           </>
         )}
 

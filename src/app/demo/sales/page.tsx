@@ -35,6 +35,35 @@ interface CaptchaEntry {
   pos: 'sidebar' | 'modal';
 }
 
+const RadioButton = ({ label, value, currentValue, onChange, disabled = false, errorSetter }: any) => {
+  const isSelected = currentValue === value;
+
+  return (
+    <div
+      onClick={() => {
+        if (!disabled) {
+          onChange(value);
+          if (errorSetter) errorSetter(false);
+        }
+      }}
+      className={`flex items-center gap-2 cursor-pointer group transition-all duration-150 ${disabled ? 'opacity-40 cursor-not-allowed' : 'opacity-100 hover:opacity-80'}`}
+    >
+      <div className="relative flex items-center justify-center">
+        <div className={`w-4 h-4 border rounded-full flex items-center justify-center transition-all duration-200 ${isSelected
+          ? 'border-indigo-600 bg-white ring-2 ring-indigo-50'
+          : 'border-gray-300 bg-white group-hover:border-gray-400'
+          }`}>
+          {isSelected && <div className="w-2 h-2 bg-indigo-600 rounded-full animate-in zoom-in-50 duration-200" />}
+        </div>
+      </div>
+      <span className={`text-[14px] select-none transition-colors ${isSelected ? 'text-gray-900 font-bold' : 'text-gray-400 font-medium'
+        }`}>
+        {label}
+      </span>
+    </div>
+  );
+};
+
 const SalesDemoContent: React.FC = () => {
   const router = useRouter();
   const dispatch = useAppDispatch();
@@ -362,40 +391,6 @@ const SalesDemoContent: React.FC = () => {
     }
   };
 
-  const RadioButton = ({ label, value, currentValue, onChange, disabled = false, errorSetter }: any) => {
-    const isSelected = currentValue === value;
-
-    const handleClick = (e: React.MouseEvent | React.TouchEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!disabled) {
-        onChange(value);
-        if (errorSetter) errorSetter(false);
-      }
-    };
-
-    return (
-      <div
-        onClick={handleClick}
-        onTouchStart={handleClick}
-        onMouseDown={(e) => e.preventDefault()} // Prevent focus jump issues
-        className={`flex items-center gap-2 cursor-pointer group transition-all duration-150 ${disabled ? 'opacity-40 cursor-not-allowed' : 'opacity-100'}`}
-      >
-        <div className="relative flex items-center justify-center pointer-events-none">
-          <div className={`w-4 h-4 border rounded-full flex items-center justify-center transition-all duration-200 ${isSelected
-            ? 'border-indigo-600 bg-white ring-2 ring-indigo-100'
-            : 'border-gray-300 bg-white group-hover:border-gray-400'
-            }`}>
-            {isSelected && <div className="w-2 h-2 bg-indigo-600 rounded-full animate-in zoom-in-50 duration-200" />}
-          </div>
-        </div>
-        <span className={`text-[14px] select-none transition-colors ${isSelected ? 'text-gray-900 font-bold' : 'text-gray-400 font-medium'
-          }`}>
-          {label}
-        </span>
-      </div>
-    );
-  };
 
   return (
     <div className="min-h-screen bg-[#fcfcfc] flex flex-col font-sans">
@@ -500,10 +495,17 @@ const SalesDemoContent: React.FC = () => {
             {isCurrentCaptchaInThisStep && currentCaptcha.pos === 'sidebar' && (
               <div
                 id="sidebar-captcha-container"
-                className="w-[420px] shrink-0 bg-white border border-gray-100 shadow-sm relative min-h-[480px] mt-10 rounded-lg overflow-hidden transition-all"
+                className="w-[380px] shrink-0 relative mt-10 transition-all flex items-start"
               >
                 {renderCaptcha(currentCaptcha.type, handleVerify)}
-                {isCurrentCaptchaVerified && <div className="absolute inset-0 bg-green-500/10 flex items-center justify-center font-bold text-green-600 backdrop-blur-[1px] animate-in fade-in duration-300">TAMAMLANDI ✓</div>}
+                {isCurrentCaptchaVerified && (
+                  <div className="absolute inset-0 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center font-black text-[#00965e] z-50 animate-in fade-in zoom-in-95 duration-300 border-2 border-[#00965e]/20 rounded-xl">
+                    <div className="w-12 h-12 bg-[#00965e] text-white rounded-full flex items-center justify-center mb-2 shadow-lg shadow-[#00965e]/20">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    </div>
+                    <span className="uppercase tracking-[2px] text-sm">TAMAMLANDI ✓</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -657,10 +659,17 @@ const SalesDemoContent: React.FC = () => {
             {isCurrentCaptchaInThisStep && currentCaptcha.pos === 'sidebar' && (
               <div
                 id="sidebar-captcha-container"
-                className="w-[400px] shrink-0 bg-white border border-gray-100 shadow-sm relative sticky top-20 rounded-lg overflow-hidden transition-all"
+                className="w-[380px] shrink-0 relative sticky top-20 transition-all flex items-start"
               >
                 {renderCaptcha(currentCaptcha.type, handleVerify)}
-                {isCurrentCaptchaVerified && <div className="absolute inset-0 bg-green-500/10 flex items-center justify-center font-bold text-green-600 backdrop-blur-[1px] animate-in fade-in duration-300">TAMAMLANDI ✓</div>}
+                {isCurrentCaptchaVerified && (
+                  <div className="absolute inset-0 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center font-black text-[#00965e] z-50 animate-in fade-in zoom-in-95 duration-300 border-2 border-[#00965e]/20 rounded-xl">
+                    <div className="w-12 h-12 bg-[#00965e] text-white rounded-full flex items-center justify-center mb-2 shadow-lg shadow-[#00965e]/20">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    </div>
+                    <span className="uppercase tracking-[2px] text-sm">TAMAMLANDI ✓</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -762,9 +771,16 @@ const SalesDemoContent: React.FC = () => {
         {isModalOpen && isCurrentCaptchaInThisStep && currentCaptcha.pos === 'modal' && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={() => setIsModalOpen(false)}></div>
-            <div className="bg-white rounded-2xl w-full max-w-[420px] overflow-hidden relative shadow-2xl min-h-[520px]">
+            <div className="w-full max-w-[380px] relative">
               {renderCaptcha(currentCaptcha.type, handleVerify)}
-              {isCurrentCaptchaVerified && <div className="absolute bottom-0 left-0 right-0 bg-green-500 text-white p-4 text-center font-bold">TƏSDİQLƏNDİ ✓</div>}
+              {isCurrentCaptchaVerified && (
+                <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center font-black text-[#00965e] z-50 animate-in fade-in zoom-in-95 duration-300 border-2 border-[#00965e]/20 rounded-2xl">
+                  <div className="w-12 h-12 bg-[#00965e] text-white rounded-full flex items-center justify-center mb-2 shadow-lg shadow-[#00965e]/20">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  </div>
+                  <span className="uppercase tracking-[2px] text-sm">TƏSDİQLƏNDİ ✓</span>
+                </div>
+              )}
             </div>
           </div>
         )}
