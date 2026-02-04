@@ -50,7 +50,7 @@ export default function LoginPage() {
       <div
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-transform duration-1000"
         style={{
-          backgroundImage: "url('/bgimage.webp')",
+          backgroundImage: "url('/bgimage2.jpg')",
         }}
       >
         {/* Darkened overlay for better readability */}
