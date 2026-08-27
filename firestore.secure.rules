@@ -1,0 +1,54 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(email) {
+      return signedIn() && request.auth.token.email == email;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'admin';
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, delete: if isAdmin();
+      allow update: if signedIn()
+        && (isAdmin()
+          || (request.auth.uid == userId
+            && request.resource.data.status == resource.data.status));
+    }
+
+    match /chapcaSessions/{sessionId} {
+      allow create: if isOwner(request.resource.data.email);
+      allow read: if isOwner(resource.data.email) || isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /salesSessions/{sessionId} {
+      allow create: if isOwner(request.resource.data.email);
+      allow read: if isOwner(resource.data.email) || isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /aimSessions/{sessionId} {
+      allow create: if isOwner(request.resource.data.email);
+      allow read: if isOwner(resource.data.email) || isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /captchaSettings/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, update, delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

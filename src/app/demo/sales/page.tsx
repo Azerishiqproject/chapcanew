@@ -6,14 +6,17 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { logoutUser } from '@/store/slices/authSlice';
 import { LogOut, Info, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
 import {
-  CaptchaType
+  CaptchaType,
+  setCaptchaSettings,
 } from '@/store/slices/captchaSlice';
 import DateCaptcha from '@/components/DateCaptcha';
 import NumberCaptcha from '@/components/NumberCaptcha';
 import TextCaptcha from '@/components/TextCaptcha';
 import BirthDateCaptcha from '@/components/BirthDateCaptcha';
+import PersonalInfoCaptcha from '@/components/PersonalInfoCaptcha';
 import { Timestamp } from 'firebase/firestore';
 import { saveSalesSession } from '@/lib/salesSessions';
+import { getUserCaptchaSettings } from '@/lib/captchaSettings';
 
 const projects = [
   'Yasamal Yaşayış Kompleksi',
@@ -106,6 +109,19 @@ const SalesDemoContent: React.FC = () => {
   const [captchaKey, setCaptchaKey] = useState(0); // Used to force refresh captcha component
   const [activeStepStart, setActiveStepStart] = useState<number>(Date.now());
   const [captchaStartTime, setCaptchaStartTime] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    let cancelled = false;
+    getUserCaptchaSettings(user.uid).then(({ settings }) => {
+      if (!cancelled && settings) dispatch(setCaptchaSettings(settings));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, user?.uid]);
 
   // Helper to pick a random type
   const pickType = (exclude?: CaptchaType) => {
@@ -387,6 +403,9 @@ const SalesDemoContent: React.FC = () => {
       case 'number': return <NumberCaptcha key={k} onVerify={onVerify} />;
       case 'text': return <TextCaptcha key={k} onVerify={onVerify} />;
       case 'birthdate': return <BirthDateCaptcha key={k} correctDate={captchaSettings.dateConfig.birthDate} onVerify={onVerify} />;
+      case 'fin': return <PersonalInfoCaptcha key={k} type="fin" correctAnswer={captchaSettings.personalConfig.fin} onVerify={onVerify} />;
+      case 'religion': return <PersonalInfoCaptcha key={k} type="religion" correctAnswer={captchaSettings.personalConfig.religion} onVerify={onVerify} />;
+      case 'favoriteCar': return <PersonalInfoCaptcha key={k} type="favoriteCar" correctAnswer={captchaSettings.personalConfig.favoriteCar} onVerify={onVerify} />;
       default: return null;
     }
   };

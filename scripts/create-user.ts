@@ -2,12 +2,12 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, Timestamp } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCZV_z2_kXGqZwsBbJPDDq_kfUQZ1pM16Y",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "worktodemo.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "worktodemo",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "worktodemo.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "1091257161152",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:1091257161152:web:3e8262a5df1e2a8b742425",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyD0SU6QHx4hbgVf9Arj_dFTzwU5ypCwUm0",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "mida-traninig.firebaseapp.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "mida-traninig",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "mida-traninig.firebasestorage.app",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "450096530520",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:450096530520:web:7c07414ffd6873c661362d",
 };
 
 const app = initializeApp(firebaseConfig);
@@ -45,4 +45,3 @@ async function createUser() {
 }
 
 createUser();
-

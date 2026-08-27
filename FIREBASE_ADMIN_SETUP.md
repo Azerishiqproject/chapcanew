@@ -6,21 +6,21 @@
 https://console.firebase.google.com/
 
 ### 2. Projenizi Seçin
-- "worktodemo" projesini seçin
+- "mida-traninig" projesini seçin
 
 ### 3. Service Account Key Oluştur
 1. Sol menüden **Project Settings** (⚙️ simgesi) → **Service Accounts** sekmesine gidin
 2. **Generate New Private Key** butonuna tıklayın
-3. JSON dosyasını indirin (örn: `worktodemo-firebase-adminsdk-xxxxx.json`)
+3. JSON dosyasını indirin (örn: `mida-traninig-firebase-adminsdk-xxxxx.json`)
 
 ### 4. .env.local Dosyasına Ekle
 İndirdiğiniz JSON dosyasından şu bilgileri alın:
 
 ```json
 {
-  "project_id": "worktodemo",
+  "project_id": "mida-traninig",
   "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
-  "client_email": "firebase-adminsdk-xxxxx@worktodemo.iam.gserviceaccount.com"
+  "client_email": "firebase-adminsdk-xxxxx@mida-traninig.iam.gserviceaccount.com"
 }
 ```
 
@@ -28,8 +28,8 @@ https://console.firebase.google.com/
 
 ```bash
 # Firebase Admin SDK (Backend)
-FIREBASE_PROJECT_ID=worktodemo
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@worktodemo.iam.gserviceaccount.com
+FIREBASE_PROJECT_ID=mida-traninig
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@mida-traninig.iam.gserviceaccount.com
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour-Private-Key-Here\n-----END PRIVATE KEY-----\n"
 ```
 

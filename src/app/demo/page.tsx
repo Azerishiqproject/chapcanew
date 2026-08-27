@@ -8,9 +8,15 @@ import {
   setAllowedTypes,
   setRequiredCount,
   updateDateConfig,
+  updatePersonalConfig,
   setCaptchaEnabled,
+  setCaptchaSettings,
   CaptchaType
 } from '@/store/slices/captchaSlice';
+import {
+  getUserCaptchaSettings,
+  saveUserCaptchaSettings,
+} from '@/lib/captchaSettings';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   LogOut,
@@ -213,15 +219,38 @@ const InstructionRow: React.FC<{ label: string }> = ({ label }) => (
 const CaptchaSettings: React.FC = () => {
   const dispatch = useAppDispatch();
   const captchaStore = useAppSelector((state) => state.captcha);
+  const user = useAppSelector((state) => state.auth.user);
 
   // Local state for form inputs
   const [localTypes, setLocalTypes] = useState<CaptchaType[]>(captchaStore.allowedTypes);
   const [localCount, setLocalCount] = useState<number>(captchaStore.requiredCount);
   const [localToday, setLocalToday] = useState<string>(captchaStore.dateConfig.todayDate);
   const [localBirth, setLocalBirth] = useState<string>(captchaStore.dateConfig.birthDate);
+  const [localFin, setLocalFin] = useState<string>(captchaStore.personalConfig.fin);
+  const [localReligion, setLocalReligion] = useState<string>(captchaStore.personalConfig.religion);
+  const [localFavoriteCar, setLocalFavoriteCar] = useState<string>(captchaStore.personalConfig.favoriteCar);
   const [localEnabled, setLocalEnabled] = useState<boolean>(captchaStore.enabled);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    let cancelled = false;
+    setIsLoadingSettings(true);
+    getUserCaptchaSettings(user.uid).then(({ settings, error }) => {
+      if (cancelled) return;
+      if (settings) dispatch(setCaptchaSettings(settings));
+      setSettingsError(error);
+      setIsLoadingSettings(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, user?.uid]);
 
   // Keep local state in sync if store changes elsewhere (optional but good)
   useEffect(() => {
@@ -229,6 +258,9 @@ const CaptchaSettings: React.FC = () => {
     setLocalCount(captchaStore.requiredCount);
     setLocalToday(captchaStore.dateConfig.todayDate);
     setLocalBirth(captchaStore.dateConfig.birthDate);
+    setLocalFin(captchaStore.personalConfig.fin);
+    setLocalReligion(captchaStore.personalConfig.religion);
+    setLocalFavoriteCar(captchaStore.personalConfig.favoriteCar);
     setLocalEnabled(captchaStore.enabled);
   }, [captchaStore]);
 
@@ -241,22 +273,47 @@ const CaptchaSettings: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!user?.uid) {
+      setSettingsError('İstifadəçi məlumatı tapılmadı');
+      return;
+    }
+
+    if (localTypes.includes('fin') && localFin.length !== 7) {
+      setSettingsError('FİN kodu tam 7 hərf və ya rəqəmdən ibarət olmalıdır');
+      return;
+    }
+
     setIsSaving(true);
+    setSettingsError(null);
 
-    // Simulate slight delay for premium feel
-    setTimeout(() => {
-      dispatch(setAllowedTypes(localTypes));
-      dispatch(setRequiredCount(localCount));
-      dispatch(updateDateConfig({ todayDate: localToday, birthDate: localBirth }));
-      dispatch(setCaptchaEnabled(localEnabled));
+    const settings = {
+      allowedTypes: localTypes,
+      requiredCount: localCount,
+      dateConfig: { todayDate: localToday, birthDate: localBirth },
+      personalConfig: {
+        fin: localFin,
+        religion: localReligion.trim(),
+        favoriteCar: localFavoriteCar.trim(),
+      },
+      enabled: localEnabled,
+    };
+    const { error } = await saveUserCaptchaSettings(user.uid, settings);
 
+    if (error) {
+      setSettingsError(error);
       setIsSaving(false);
-      setShowSuccess(true);
+      return;
+    }
 
-      // Hide success message after 3 seconds
-      setTimeout(() => setShowSuccess(false), 3000);
-    }, 600);
+    dispatch(setAllowedTypes(settings.allowedTypes));
+    dispatch(setRequiredCount(settings.requiredCount));
+    dispatch(updateDateConfig(settings.dateConfig));
+    dispatch(updatePersonalConfig(settings.personalConfig));
+    dispatch(setCaptchaEnabled(settings.enabled));
+    setIsSaving(false);
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
   };
 
   return (
@@ -309,7 +366,10 @@ const CaptchaSettings: React.FC = () => {
                 { id: 'date' as CaptchaType, label: 'Tarix Captcha' },
                 { id: 'number' as CaptchaType, label: 'Rəqəm Captcha' },
                 { id: 'text' as CaptchaType, label: 'Mətn Captcha' },
-                { id: 'birthdate' as CaptchaType, label: 'Doğum Tarixi Captcha' }
+                { id: 'birthdate' as CaptchaType, label: 'Doğum Tarixi Captcha' },
+                { id: 'fin' as CaptchaType, label: 'FİN / İdentifikasiya Captcha' },
+                { id: 'religion' as CaptchaType, label: 'Din Captcha' },
+                { id: 'favoriteCar' as CaptchaType, label: 'Sevimli Maşın Captcha' }
               ].map(item => (
                 <label key={item.id} className="flex items-center gap-3 p-3 border border-gray-100 rounded-sm cursor-pointer hover:bg-gray-50 transition-colors group">
                   <input
@@ -375,16 +435,51 @@ const CaptchaSettings: React.FC = () => {
                   className="w-full p-2.5 border border-gray-200 rounded-sm text-sm focus:ring-1 focus:ring-[#00965e] focus:border-[#00965e] outline-none transition-all font-mono"
                 />
               </div>
+              <div>
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">FİN (7 simvol)</label>
+                <input
+                  type="text"
+                  maxLength={7}
+                  placeholder="69SZNKO"
+                  value={localFin}
+                  onChange={(e) => setLocalFin(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7))}
+                  className="w-full p-2.5 border border-gray-200 rounded-sm text-sm focus:ring-1 focus:ring-[#00965e] focus:border-[#00965e] outline-none transition-all font-mono uppercase tracking-widest"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Din</label>
+                <input
+                  type="text"
+                  maxLength={40}
+                  value={localReligion}
+                  onChange={(e) => setLocalReligion(e.target.value)}
+                  className="w-full p-2.5 border border-gray-200 rounded-sm text-sm focus:ring-1 focus:ring-[#00965e] focus:border-[#00965e] outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Sevimli Maşın</label>
+                <input
+                  type="text"
+                  maxLength={40}
+                  value={localFavoriteCar}
+                  onChange={(e) => setLocalFavoriteCar(e.target.value)}
+                  className="w-full p-2.5 border border-gray-200 rounded-sm text-sm focus:ring-1 focus:ring-[#00965e] focus:border-[#00965e] outline-none transition-all"
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Footer Save Button */}
-      <div className="p-6 bg-gray-50/50 border-t border-gray-50 flex justify-end">
+      <div className="p-6 bg-gray-50/50 border-t border-gray-50 flex flex-col sm:flex-row sm:items-center gap-4 sm:justify-between">
+        <div className="text-sm font-medium">
+          {isLoadingSettings && <span className="text-gray-400">Ayarlar yüklənir...</span>}
+          {settingsError && <span className="text-red-500">{settingsError}</span>}
+        </div>
         <button
           onClick={handleSave}
-          disabled={isSaving}
+          disabled={isSaving || isLoadingSettings}
           className={`flex items-center gap-3 px-10 py-3 bg-[#00965e] text-white rounded-sm font-bold text-[14px] shadow-sm hover:shadow-md hover:bg-[#007a4d] transition-all disabled:opacity-70 disabled:cursor-not-allowed`}
         >
           {isSaving ? (
@@ -408,6 +503,32 @@ const CaptchaSettings: React.FC = () => {
 
 const DemoContent: React.FC = () => {
   const router = useRouter();
+  const [salesCountdown, setSalesCountdown] = useState<number | null>(null);
+  const [isSalesReady, setIsSalesReady] = useState(false);
+
+  useEffect(() => {
+    if (salesCountdown === null) return;
+
+    const timeout = window.setTimeout(() => {
+      if (salesCountdown <= 1) {
+        setSalesCountdown(null);
+        setIsSalesReady(true);
+      } else {
+        setSalesCountdown(salesCountdown - 1);
+      }
+    }, 1000);
+
+    return () => window.clearTimeout(timeout);
+  }, [salesCountdown]);
+
+  const handleSalesCardClick = () => {
+    if (isSalesReady) {
+      router.push('/demo/sales');
+      return;
+    }
+
+    if (salesCountdown === null) setSalesCountdown(3);
+  };
 
   const mockUser: UserInfo = {
     fullName: 'HÜSEYNOV İLKİN İSLAM OĞLU',
@@ -480,11 +601,26 @@ const DemoContent: React.FC = () => {
                 {cards.map((card, idx) => {
                   const handleClick =
                     card.title === 'Satış başlayıb'
-                      ? () => router.push('/demo/sales')
+                      ? handleSalesCardClick
                       : undefined;
                   return (
-                    <div key={idx} onClick={handleClick}>
+                    <div key={idx} onClick={handleClick} className="relative">
                       <DashboardCard {...card} />
+                      {card.title === 'Satış başlayıb' && (salesCountdown !== null || isSalesReady) && (
+                        <div className="absolute inset-0 z-20 flex cursor-pointer flex-col items-center justify-center rounded-sm bg-[#006f47]/95 text-white backdrop-blur-[1px]">
+                          {salesCountdown !== null ? (
+                            <>
+                              <span className="text-6xl font-black tabular-nums">{salesCountdown}</span>
+                              <span className="mt-2 text-xs font-bold uppercase tracking-[0.2em]">Satış açılır</span>
+                            </>
+                          ) : (
+                            <>
+                              <PlayCircle size={38} />
+                              <span className="mt-3 text-sm font-bold">Daxil olmaq üçün klikləyin</span>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
