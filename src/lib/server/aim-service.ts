@@ -4,7 +4,7 @@ import { ApiError, digest, text } from './security';
 import { requireAdmin, type Identity } from './session';
 import { applyTelemetry, bounded, endReason, initialAccumulator, runConfiguration, runSummary, type AimAccumulator } from './aim-telemetry';
 import { MAX_RUN_MS, isProgressive, type AimSettings } from '../aim-game';
-import { TRAINING_DURATION_MS, TRAINING_PROTOCOL, REFERENCE_PROTOCOL, comparisonCondition, type TrainingEnvironment } from '../aim-training';
+import { TRAINING_DURATION_MS, TRAINING_PROTOCOL, REFERENCE_PROTOCOL, LEGACY_REFERENCE_PROTOCOL, isReferenceProtocol, comparisonCondition, type TrainingEnvironment } from '../aim-training';
 import { compareTrainingCohorts, mergeTrainingRun, type TrainingCohort } from '../aim-comparison';
 import { record } from './security';
 
@@ -99,8 +99,8 @@ export async function appendAimEvents(identity: Identity, runId: string, input: 
 }
 export async function trainingComparison(identity: Identity, level: number, condition: string | null, protocol: string = TRAINING_PROTOCOL) {
   requireAdmin(identity);
-  if (![TRAINING_PROTOCOL, REFERENCE_PROTOCOL].includes(protocol)) throw new ApiError(400, 'Geçersiz karşılaştırma türü.');
-  if (!Number.isInteger(level) || level < 1 || level > (protocol === REFERENCE_PROTOCOL ? 3 : 5)) throw new ApiError(400, 'Geçersiz kademe.');
+  if (![TRAINING_PROTOCOL, REFERENCE_PROTOCOL, LEGACY_REFERENCE_PROTOCOL].includes(protocol)) throw new ApiError(400, 'Geçersiz karşılaştırma türü.');
+  if (!Number.isInteger(level) || level < 1 || level > (isReferenceProtocol(protocol) ? 3 : 5)) throw new ApiError(400, 'Geçersiz kademe.');
   const { db } = adminServices();
   const snapshot = await db.collection('aimComparison').where('protocol', '==', protocol).get();
   const all = snapshot.docs.map((doc) => doc.data() as TrainingCohort);

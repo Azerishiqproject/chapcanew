@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'rea
 import { Heart, Maximize, Play, RotateCcw, Settings2, Square, Target, Volume2, VolumeX, X } from 'lucide-react';
 import { api, errorMessage } from '@/lib/api-client';
 import { ARENA, AimGame, CHALLENGE, EASY, DIRECT, PROGRESSIVE, calculateMetrics, speedAt, targetPosition, targetRadius, targetOpacity, type AimMetrics, type AimSettings, type EndReason } from '@/lib/aim-game';
+import { arenaViewport, arenaPoint } from '@/lib/aim-viewport';
 import { AimRecorder } from '@/lib/aim-recorder';
 import { TRAINING_DURATION_MS, TRAINING_STAGES, REFERENCE_PHASES, referencePhaseAt, trainingStage, type InputDevice, type TrainingEnvironment } from '@/lib/aim-training';
 import { AimAudio, type AimSound } from '@/lib/aim-audio';
@@ -20,7 +21,11 @@ function paint(canvas: HTMLCanvasElement, game: AimGame | null) {
   if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-  ctx.setTransform(width / ARENA.width, 0, 0, height / ARENA.height, 0, 0);
+  if (!box.width || !box.height) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#071723'; ctx.fillRect(0, 0, width, height);
+  const view = arenaViewport(box.width, box.height);
+  ctx.setTransform(view.scale * width / box.width, 0, 0, view.scale * height / box.height, view.x * width / box.width, view.y * height / box.height);
   ctx.fillStyle = '#0b2030'; ctx.fillRect(0, 0, ARENA.width, ARENA.height);
   ctx.strokeStyle = 'rgba(159,194,218,0.035)'; ctx.lineWidth = 1;
   for (let x = 0; x <= ARENA.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ARENA.height); ctx.stroke(); }
@@ -147,11 +152,12 @@ export default function AimTrainer() {
     if (!canvas) return;
     const observer = new ResizeObserver(() => {
       const box = canvas.getBoundingClientRect(), old = lastCanvasSize.current;
+      const view = arenaViewport(box.width, box.height);
       const game = gameRef.current;
-      if (game?.settings.training && !game.ended && old && (Math.abs(box.width - old.width) > 2 || Math.abs(box.height - old.height) > 2)) {
-        game.resize(box.width, box.height, performance.now() - startedAt.current);
+      if (game?.settings.training && !game.ended && old && (Math.abs(view.width - old.width) > 2 || Math.abs(view.height - old.height) > 2)) {
+        game.resize(view.width, view.height, performance.now() - startedAt.current);
       }
-      lastCanvasSize.current = { width: box.width, height: box.height };
+      lastCanvasSize.current = { width: view.width, height: view.height };
       paint(canvas, game);
     });
     observer.observe(canvas);
@@ -172,8 +178,9 @@ export default function AimTrainer() {
     }
     try {
       const box = canvasRef.current!.getBoundingClientRect();
-      const environment: TrainingEnvironment = { inputDevice, arenaWidth: box.width, arenaHeight: box.height, devicePixelRatio: window.devicePixelRatio || 1 };
-      lastCanvasSize.current = { width: box.width, height: box.height };
+      const view = arenaViewport(box.width, box.height);
+      const environment: TrainingEnvironment = { inputDevice, arenaWidth: view.width, arenaHeight: view.height, devicePixelRatio: window.devicePixelRatio || 1 };
+      lastCanvasSize.current = { width: view.width, height: view.height };
       const run = await api<{ id: string }>('aim/runs', 'POST', { clientRunId: crypto.randomUUID(), profile, settings, ...(settings.training ? { environment } : {}) });
       if (!mounted.current) return;
       gameRef.current = new AimGame(settings); recorderRef.current = new AimRecorder(run.id, user.uid, localStorage);
@@ -181,6 +188,7 @@ export default function AimTrainer() {
       setHud({ elapsed: 0, hits: 0, misses: 0, lost: 0, speed: settings.targetsPerSecond });
       setTrainingHud({ level: 1, maxLevel: 1, hits: 0, resolved: 0, targetCount: 0 });
       setPhase('playing'); setResult(null); setSaveState('ready');
+      if (!document.fullscreenElement) arenaRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' });
       // Persist even an empty initial checkpoint, so a reload can close the run.
       capture();
       function animate(now: number) {
@@ -207,8 +215,9 @@ export default function AimTrainer() {
     if (!game || game.ended || event.button !== 0) return;
     event.preventDefault();
     const box = event.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(ARENA.width, (event.clientX - box.left) / box.width * ARENA.width));
-    const y = Math.max(0, Math.min(ARENA.height, (event.clientY - box.top) / box.height * ARENA.height));
+    const point = arenaPoint(event.clientX - box.left, event.clientY - box.top, box.width, box.height);
+    if (!point) return;
+    const { x, y } = point;
     const previousLost = game.lostLives;
     const now = performance.now() - startedAt.current;
     game.move(x, y, now, event.pointerType === 'touch' ? 'touch' : event.pointerType === 'pen' ? 'pen' : 'mouse', true);
@@ -221,8 +230,9 @@ export default function AimTrainer() {
     const game = gameRef.current;
     if (!game?.settings.training || game.ended) return;
     const box = event.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(ARENA.width, (event.clientX - box.left) / box.width * ARENA.width));
-    const y = Math.max(0, Math.min(ARENA.height, (event.clientY - box.top) / box.height * ARENA.height));
+    const point = arenaPoint(event.clientX - box.left, event.clientY - box.top, box.width, box.height);
+    if (!point) return;
+    const { x, y } = point;
     const previousLost = game.lostLives;
     game.move(x, y, performance.now() - startedAt.current, event.pointerType === 'touch' ? 'touch' : event.pointerType === 'pen' ? 'pen' : 'mouse');
     if (game.lostLives > previousLost) playSound('expire');
@@ -261,7 +271,7 @@ export default function AimTrainer() {
         <div className="mt-3 grid grid-cols-5 gap-2">{TRAINING_STAGES.map((item) => <div key={item.level} className={`h-1.5 rounded-full ${item.level <= trainingHud.level ? 'bg-[#fb713f]' : 'bg-white/10'}`} />)}</div>
         <p className="mt-3 text-xs leading-5 text-[#8ca6b8]">{phase === 'playing' ? `Bu blok: ${trainingHud.hits} isabet / ${trainingHud.resolved} hedef. ` : ''}8 hedefte en az 7 isabet ve %85 tıklama doğruluğuyla kademe artar. Hatalar arttığında tempo hafifler.</p>
       </div>}
-      <div ref={arenaRef} className="mx-auto max-w-[800px] overflow-hidden rounded-2xl border border-[#244052] bg-[#091a27] shadow-2xl">
+      <div ref={arenaRef} className="aim-arena mx-auto max-w-[800px] overflow-hidden rounded-2xl border border-[#244052] bg-[#091a27] shadow-2xl">
         <div className="flex min-h-20 flex-wrap items-center justify-between gap-4 border-b border-white/[0.07] px-5 py-4 sm:px-7">
           <div className="flex flex-wrap gap-5 text-sm font-medium tabular-nums sm:gap-8">
             <span className="text-[#8ea3b3]">{progressive ? 'Kalan' : 'Vaxt'} <strong className="ml-2 text-lg font-semibold text-[#a28bfa]" data-testid="aim-time">{formatTime(progressive ? Math.max(0, TRAINING_DURATION_MS - hud.elapsed) : hud.elapsed)}</strong></span>
@@ -271,15 +281,15 @@ export default function AimTrainer() {
           {progressive ? <span className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#adbfcd]">{trainingHud.targetCount}/{stage.maxTargets} hedef</span> : <div className="flex items-center gap-1.5" aria-label={`${Math.max(0, currentSettings.lives - hud.lost)} can qaldı`}>
             {Array.from({ length: currentSettings.lives }, (_, i) => <Heart key={i} size={21} className={i < currentSettings.lives - hud.lost ? 'fill-[#fb713f] text-[#fb713f]' : 'fill-[#294152] text-[#294152]'} />)}
           </div>}
-        </div>
-        <div className="relative aspect-[5/3] min-h-[280px] w-full">
-          <canvas ref={canvasRef} data-testid="aim-arena" aria-label="Görünən hədəfləri tıklayın" onPointerDown={shoot} onPointerMove={movePointer} onContextMenu={(event) => event.preventDefault()} className="absolute inset-0 h-full w-full touch-none" style={{ cursor: phase === 'playing' ? crosshair : 'default' }} />
-          <div className="absolute right-4 top-4 z-10 flex gap-2">
-            {phase === 'playing' && <button aria-label="Turu bitir" onClick={() => finish('manual')} className="aim-icon-button"><Square size={15} /></button>}
+          <div className="flex shrink-0 items-center gap-2">
+            <button aria-label="Turu bitir" disabled={phase !== 'playing'} onClick={() => finish('manual')} className="aim-icon-button disabled:opacity-30"><Square size={15} /></button>
             <button aria-label={sound ? 'Səsi bağla' : 'Səsi aç'} aria-pressed={sound} onClick={toggleSound} className="aim-icon-button">{sound ? <Volume2 size={17} /> : <VolumeX size={17} />}</button>
             <button aria-label="Oyun ayarları" disabled={busy} onClick={() => setSettingsOpen(true)} className="aim-icon-button disabled:opacity-30"><Settings2 size={17} /></button>
             <button aria-label="Tam ekran" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen(); else void arenaRef.current?.requestFullscreen().catch(() => setError('Tam ekran bu pəncərədə dəstəklənmir.')); }} className="aim-icon-button"><Maximize size={17} /></button>
           </div>
+        </div>
+        <div className="aim-playfield relative aspect-[5/3] min-h-[280px] w-full">
+          <canvas ref={canvasRef} data-testid="aim-arena" aria-label="Görünən hədəfləri tıklayın" onPointerDown={shoot} onPointerMove={movePointer} onContextMenu={(event) => event.preventDefault()} className="absolute inset-0 h-full w-full touch-none" style={{ cursor: phase === 'playing' ? crosshair : 'default' }} />
           {(phase === 'idle' || phase === 'starting') && (
             <div className="absolute inset-0 flex flex-col items-center justify-center px-5 text-center">
               <Target className="mb-5 text-[#fb713f]" size={46} strokeWidth={1.3} />
@@ -329,7 +339,7 @@ export default function AimTrainer() {
       {audioWarning && <p role="status" className="mt-4 text-sm text-orange-200">{audioWarning}</p>}
       {error && <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-orange-400/20 bg-orange-400/5 p-4 text-sm text-orange-200"><span>{error}</span>{saveState === 'error' && <button onClick={() => void upload()} className="rounded-lg bg-white/10 px-4 py-2 font-semibold">Qeydi yenidən göndər</button>}</div>}
       <div className="mt-6 grid grid-cols-3 gap-3 text-center text-xs text-[#91a7b8]"><p><span className="font-semibold text-[#dbe6ee]">01</span> Hədəfi gör</p><p><span className="font-semibold text-[#dbe6ee]">02</span> Nişan al və vur</p><p><span className="font-semibold text-[#dbe6ee]">03</span> Nəticəni yaxşılaşdır</p></div>
-      <style jsx>{`.aim-icon-button { display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:#07172388;color:#a6bac9;transition:background .15s; } .aim-icon-button:hover { background:#244356; color:white; }`}</style>
+      <style jsx>{`.aim-arena { scroll-margin-top:96px; } .aim-playfield { max-height:calc(100dvh - 240px); } .aim-arena:fullscreen { display:flex;flex-direction:column;max-width:none;width:100%;height:100%;border-radius:0; } .aim-arena:fullscreen > div { flex-shrink:0; } .aim-arena:fullscreen .aim-playfield { flex:1 1 0;min-height:0;max-height:none;aspect-ratio:auto; } .aim-icon-button { display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:#07172388;color:#a6bac9;transition:background .15s; } .aim-icon-button:hover { background:#244356; color:white; }`}</style>
     </section>
   );
 }

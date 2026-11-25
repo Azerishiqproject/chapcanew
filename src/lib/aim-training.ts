@@ -1,5 +1,7 @@
 export const TRAINING_PROTOCOL = 'progressive-v1';
-export const REFERENCE_PROTOCOL = 'reference-video-v1';
+export const LEGACY_REFERENCE_PROTOCOL = 'reference-video-v1';
+export const REFERENCE_PROTOCOL = 'reference-compact-v2';
+export const isReferenceProtocol = (value: string | undefined) => value === REFERENCE_PROTOCOL || value === LEGACY_REFERENCE_PROTOCOL;
 // Labels describe a continuous rate; changing sections never resets spawning.
 export const REFERENCE_PHASES = [
   { level: 1, name: 'Başlangıç', fromMs: 0 },

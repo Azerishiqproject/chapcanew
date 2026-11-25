@@ -1,4 +1,4 @@
-import { TRAINING_DURATION_MS, TRAINING_PROTOCOL, REFERENCE_PROTOCOL, referencePhaseAt, initialProgress, trainingStage, updateProgress } from './aim-training';
+import { TRAINING_DURATION_MS, TRAINING_PROTOCOL, REFERENCE_PROTOCOL, LEGACY_REFERENCE_PROTOCOL, isReferenceProtocol, referencePhaseAt, initialProgress, trainingStage, updateProgress } from './aim-training';
 // The clock is supplied by the caller so rendering frequency never changes game speed.
 export const ARENA = { width: 800, height: 480 };
 export type AimMode = 'normal' | 'dual-targets' | 'moving-targets';
@@ -11,8 +11,9 @@ export interface AimSettings {
   diameter: number;
   lives: number;
   movementSpeed: number;
+  spawnInset?: number;
   animation?: 'reference-pulse' | 'smooth-pulse' | 'legacy' | 'training-pulse' | 'video-pulse';
-  training?: typeof TRAINING_PROTOCOL | typeof REFERENCE_PROTOCOL;
+  training?: typeof TRAINING_PROTOCOL | typeof REFERENCE_PROTOCOL | typeof LEGACY_REFERENCE_PROTOCOL;
 }
 export const CHALLENGE: AimSettings = {
   mode: 'normal', targetsPerSecond: 2, acceleration: 0.01,
@@ -24,7 +25,9 @@ export const EASY: AimSettings = { ...CHALLENGE, acceleration: 0.003, lives: 5 }
 export const PROGRESSIVE: AimSettings = { ...CHALLENGE, targetsPerSecond: 0.625, acceleration: 0, diameter: 88, lifetimeMs: 4500, animation: 'training-pulse', training: TRAINING_PROTOCOL };
 // Measured from the supplied video: 2.00 -> 2.15 t/s in ~15s,
 // 60px peak diameter and ~30px/s growth/shrink over a four-second life.
-export const DIRECT: AimSettings = { ...CHALLENGE, lifetimeMs: 4000, animation: 'video-pulse', training: REFERENCE_PROTOCOL };
+export const LEGACY_DIRECT: AimSettings = { ...CHALLENGE, lifetimeMs: 4000, animation: 'video-pulse', training: LEGACY_REFERENCE_PROTOCOL };
+// Smaller peak over the same 2s growth + 2s shrink: 24px/s instead of 30px/s.
+export const DIRECT: AimSettings = { ...LEGACY_DIRECT, diameter: 48, spawnInset: 24, training: REFERENCE_PROTOCOL };
 export const isProgressive = (settings: AimSettings) => settings.training === TRAINING_PROTOCOL;
 export const MAX_RUN_MS = 30 * 60 * 1000;
 export interface AimTarget { id: number; x: number; y: number; bornAt: number; vx: number; vy: number; stage?: number }
@@ -185,14 +188,14 @@ export class AimGame {
       }
     }
     if (!this.ended) this.elapsedMs = now;
-    if (this.settings.training === REFERENCE_PROTOCOL) {
+    if (isReferenceProtocol(this.settings.training)) {
       this.progress.level = referencePhaseAt(this.elapsedMs);
       this.progress.maxLevel = Math.max(this.progress.maxLevel, this.progress.level);
     }
     if (!this.ended && nowMs >= duration) this.ended = isProgressive(this.settings) ? 'practice-complete' : 'time-limit';
   }
   private spawn() {
-    const margin = (isProgressive(this.settings) ? this.stage.diameter : this.settings.diameter) / 2 + 10;
+    const margin = (isProgressive(this.settings) ? this.stage.diameter : this.settings.diameter) / 2 + (this.settings.spawnInset ?? 10);
     let x = margin, y = margin;
     for (let attempt = 0; attempt < 20; attempt++) {
       x = margin + this.random() * (ARENA.width - margin * 2);

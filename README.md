@@ -102,7 +102,7 @@ Uygulamayı Next.js Node.js çalışma ortamında barındırın. `.env.example` 
 Varsayılan oyun, kullanıcının sağladığı 25 Kasım 2026 ekran kaydındaki Challenge akışına göre ayarlanmıştır. Hedefler tıklamadan bağımsız bir saatle kesintisiz çıkar; isabetten sonra bekleme veya başarı bloğu yoktur. Üç hedefin süresi dolduğunda tur biter; boş tıklama doğruluğu düşürür ama can götürmez.
 
 - Başlangıç: **2 hedef/sn**, saniyede **+0,01 hedef/sn**. Videodaki yaklaşık 15 saniyede 2,00 → 2,15 davranışıyla eşleşir. 30 saniyede 2,30; 60 saniyede 2,60; 90 saniyede 2,90 olur. Ani hız çarpanı kullanılmaz.
-- Hedefler yaklaşık **4 saniyede 0 → 60 → 0 mantıksal piksel** çap döngüsünü tamamlar. Videodaki tam döngülerde ölçülen yaklaşık 30 px/sn büyüme/küçülme esas alınır. İlk ve son anlarda hedef çok küçüktür.
+- Hedefler yaklaşık **4 saniyede 0 → 48 → 0 mantıksal piksel** çap döngüsünü tamamlar. Önceki 60 px çap %20 küçültülmüştür; aynı sürede büyüme/küçülme yaklaşık 24 px/sn olur. Kenarlarda en büyük yarıçapa ek 24 px güvenli boşluk bırakılır. Tam ekranda alan bütünüyle sığdırılır; kontroller hedef alanının dışındadır. İlk ve son anlarda hedef çok küçüktür.
 - Doğuş zamanları artan hız eğrisinin integralinden hesaplanır; frame hızı, isabet veya boş tıklama hedef saatini sıfırlamaz. Aynı anda yalnızca tek hedefe kilitlenmez.
 - Başlangıç/orta/yüksek tempo etiketleri 0–30, 30–90 ve 90+ saniye bölümlerini adlandırır. Bölüm sınırlarında hız veya hedef boyutu sıçramaz; bunlar aynı oyunun raporlama aralıklarıdır.
 - Ses, nişangah, tam ekran, Easy, Custom, Doubleshot ve Moving Targets korunur. Orijinal Challenge/Easy ayarlarıyla başlamış eski kayıtların geometrisi ve kuralları geriye uyumlu doğrulanır.
@@ -112,7 +112,7 @@ Her PLAY başında `aimSessions` belgesi oluşturulur. Hedef doğuşu, her isabe
 
 Admin → kullanıcı detayları → Direct Aim bütün başlatılan, tamamlanan ve yarım kalan turları sayar. Toplam/ortalama/en iyi isabet, ağırlıklı doğruluk, hedefe erişim ve atış/isabet aralıkları gösterilir. Bir tur açıldığında başlangıç/orta/yüksek tempo dökümü, grafikler, atış haritası, tek tek tıklamalar ve CSV bulunur. Toplamlar ilk 20 kayıt üzerinden hesaplanmaz. Haritada son 800 atış, grafikte örneklenmiş en fazla 350 nokta çizilir; tablo/CSV bütün atışları içerir.
 
-Admin → Oyuncu karşılaştırması (`/admin/aim`) aynı oyundaki tempo bölümlerini, aygıtı ve benzer CSS oyun alanlarını karşılaştırır. `reference-video-v1` kayıtları, önceki `progressive-v1` kayıtlarından ayrı tutulur; eski kayıtlar akış filtresinden seçilebilir. Yeni indeks veya Firestore kural değişikliği gerekmez.
+Admin → Oyuncu karşılaştırması (`/admin/aim`) aynı oyundaki tempo bölümlerini, aygıtı ve benzer CSS oyun alanlarını karşılaştırır. `reference-compact-v2` kayıtları, önceki 60 px `reference-video-v1` ve `progressive-v1` kayıtlarından ayrı tutulur; eski kayıtlar akış filtresinden seçilebilir. Yeni indeks veya Firestore kural değişikliği gerekmez.
 
 - Karşılaştırmaya tamamlanmış, alanı değişmemiş ve seçilen giriş türüyle uyuşan turlar alınır. Mouse/touchpad ayrımı oyuncu beyanıdır; pointer türü ayrıca kontrol edilir. Alan boyutları 20 px aralıklara yuvarlanır; gerçek boyut/DPR turda saklanır. DPI ve donanım farkları sonucu etkileyebilir.
 - **Tıklama doğruluğu:** isabet / (isabet + boş tıklama). **Hedef yakalama:** isabet / (isabet + süresi dolan hedef). Tur bitince etkin kalan hedefler ikinci paydaya eklenmez.

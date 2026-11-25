@@ -10,7 +10,7 @@
     "setup:admin": "node --env-file=.env.local --import tsx scripts/create-admin.ts",
     "test:auth": "tsx --test tests/security.test.ts",
     "test:integration": "tsx --test tests/auth.integration.test.ts",
-    "test:aim": "tsx --test tests/aim.test.ts tests/aim-audio.test.ts tests/aim-training.test.ts tests/aim-direct.test.ts"
+    "test:aim": "tsx --test tests/aim.test.ts tests/aim-audio.test.ts tests/aim-training.test.ts tests/aim-direct.test.ts tests/aim-viewport.test.ts"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.11.1",

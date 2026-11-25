@@ -1,6 +1,6 @@
-import { ARENA, CHALLENGE, EASY, DIRECT, PROGRESSIVE, isProgressive, nextSpawnTime, MAX_RUN_MS, targetPosition, targetRadius, speedAt, type AimSettings, type AimTarget, type RecordedAimEvent, type EndReason } from '../aim-game';
+import { ARENA, CHALLENGE, EASY, DIRECT, LEGACY_DIRECT, PROGRESSIVE, isProgressive, nextSpawnTime, MAX_RUN_MS, targetPosition, targetRadius, speedAt, type AimSettings, type AimTarget, type RecordedAimEvent, type EndReason } from '../aim-game';
 import { ApiError, record } from './security';
-import { REFERENCE_PROTOCOL, referencePhaseAt, emptyStageStats, initialProgress, stageMetrics, trainingStage, updateProgress, type TrainingProgress, type TrainingStageStats } from '../aim-training';
+import { LEGACY_REFERENCE_PROTOCOL, isReferenceProtocol, referencePhaseAt, emptyStageStats, initialProgress, stageMetrics, trainingStage, updateProgress, type TrainingProgress, type TrainingStageStats } from '../aim-training';
 
 interface TracedTarget extends AimTarget { startPointer?: { x: number; y: number }; pathPx?: number; pathSamples?: number }
 
@@ -32,7 +32,10 @@ function integer(value: unknown, min: number, max: number) {
   return result;
 }
 export function runConfiguration(body: Record<string, unknown>): { profile: string; settings: AimSettings } {
-  if (body.profile === 'direct') return { profile: 'direct', settings: { ...DIRECT } };
+  if (body.profile === 'direct') {
+    const legacy = body.settings && record(body.settings).training === LEGACY_REFERENCE_PROTOCOL;
+    return { profile: 'direct', settings: { ...(legacy ? LEGACY_DIRECT : DIRECT) } };
+  }
   if (body.profile === 'progressive') return { profile: 'progressive', settings: { ...PROGRESSIVE } };
   // Cached clients and pending rounds retain the geometry they actually used.
   const requested = body.settings ? record(body.settings).animation : CHALLENGE.animation;
@@ -63,7 +66,7 @@ export function applyTelemetry(previous: AimAccumulator, input: unknown, setting
     if (seq !== state.nextSequence) throw new ApiError(409, 'Olay sırası uyuşmuyor.');
     const atMs = bounded(event.atMs, state.lastEventMs, throughMs);
     state.nextSequence++; state.lastEventMs = atMs;
-    if (settings.training === REFERENCE_PROTOCOL) { state.progress.level = referencePhaseAt(atMs); state.progress.maxLevel = Math.max(state.progress.maxLevel, state.progress.level); }
+    if (isReferenceProtocol(settings.training)) { state.progress.level = referencePhaseAt(atMs); state.progress.maxLevel = Math.max(state.progress.maxLevel, state.progress.level); }
     if (event.type === 'move') {
       if (!settings.training || !['mouse', 'touch', 'pen'].includes(String(event.pointerType))) throw new ApiError(400, 'Geçersiz fare örneği.');
       const x = bounded(event.x, 0, ARENA.width), y = bounded(event.y, 0, ARENA.height);
@@ -88,11 +91,11 @@ export function applyTelemetry(previous: AimAccumulator, input: unknown, setting
         : { level: referencePhaseAt(atMs), diameter: settings.diameter, maxTargets: 500, gapMs: 0 };
       if (stage && (event.stage !== stage.level || state.targets.length >= stage.maxTargets)) throw new ApiError(400, 'Kademe veya hedef sınırı uyuşmuyor.');
       if (isProgressive(settings) && atMs + 0.01 < state.nextTrainingSpawnAt) throw new ApiError(400, 'Hedef bekleme aralığı uyuşmuyor.');
-      if (settings.training === REFERENCE_PROTOCOL) {
+      if (isReferenceProtocol(settings.training)) {
         if (Math.abs(atMs - nextSpawnTime(settings, state.lastReferenceSpawnMs)) > 0.01) throw new ApiError(400, 'Hedef çıkış saati uyuşmuyor.');
         state.lastReferenceSpawnMs = atMs;
       }
-      const margin = (stage?.diameter || settings.diameter) / 2;
+      const margin = (stage?.diameter || settings.diameter) / 2 + (settings.spawnInset ?? 0);
       const x = bounded(event.x, margin, ARENA.width - margin), y = bounded(event.y, margin, ARENA.height - margin);
       const vx = bounded(event.vx, -200, 200), vy = bounded(event.vy, -200, 200);
       if (settings.mode !== 'moving-targets' && (vx !== 0 || vy !== 0)) throw new ApiError(400, 'Geçersiz hedef hareketi.');
@@ -176,7 +179,7 @@ export function applyTelemetry(previous: AimAccumulator, input: unknown, setting
       events.push({ seq, type: 'miss', atMs, targetId: null, x, y, shotNumber, intervalMs, reactionMs: null, hitIntervalMs: null, ...(settings.training ? { stage: level } : {}) });
     }
   }
-  if (settings.training === REFERENCE_PROTOCOL) { state.progress.level = referencePhaseAt(throughMs); state.progress.maxLevel = Math.max(state.progress.maxLevel, state.progress.level); }
+  if (isReferenceProtocol(settings.training)) { state.progress.level = referencePhaseAt(throughMs); state.progress.maxLevel = Math.max(state.progress.maxLevel, state.progress.level); }
   return { state, events };
 }
 export function runSummary(state: AimAccumulator, throughMs: number, settings: AimSettings) {

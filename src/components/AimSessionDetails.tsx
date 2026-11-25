@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getAimEvents, type AimSession } from '@/lib/aimSessions';
-import { REFERENCE_PROTOCOL } from '@/lib/aim-training';
+import { isReferenceProtocol } from '@/lib/aim-training';
 import { type RecordedAimEvent } from '@/lib/aim-game';
 import { errorMessage } from '@/lib/api-client';
 
@@ -17,7 +17,7 @@ export function aimStatus(session: AimSession) {
   return session.endReason === 'time-limit' ? 'Süre sınırı' : 'Tamamlandı';
 }
 export default function AimSessionDetails({ session }: { session: AimSession & { id: string } }) {
-  const reference = session.trainingProtocol === REFERENCE_PROTOCOL;
+  const reference = isReferenceProtocol(session.trainingProtocol);
   const sectionCount = reference ? 3 : 5;
   const [events, setEvents] = useState<RecordedAimEvent[]>([]);
   const [loading, setLoading] = useState(session.schemaVersion === 2);

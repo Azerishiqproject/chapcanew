@@ -4,14 +4,14 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, Users, TrendingUp } from 'lucide-react';
 import { getTrainingComparison, type TrainingComparison } from '@/lib/aimSessions';
-import { TRAINING_STAGES, TRAINING_PROTOCOL, REFERENCE_PROTOCOL, REFERENCE_PHASES } from '@/lib/aim-training';
+import { TRAINING_STAGES, TRAINING_PROTOCOL, REFERENCE_PROTOCOL, LEGACY_REFERENCE_PROTOCOL, isReferenceProtocol, REFERENCE_PHASES } from '@/lib/aim-training';
 import { aimMs } from './AimSessionDetails';
 import { errorMessage } from '@/lib/api-client';
 
 const deviceName = (name: string) => name === 'touch' ? 'Dokunmatik' : name === 'touchpad' ? 'Touchpad' : 'Mouse';
 export default function AimComparisonPanel() {
   const [protocol, setProtocol] = useState<string>(REFERENCE_PROTOCOL);
-  const stages = protocol === REFERENCE_PROTOCOL ? REFERENCE_PHASES : TRAINING_STAGES;
+  const stages = isReferenceProtocol(protocol) ? REFERENCE_PHASES : TRAINING_STAGES;
   const [stage, setStage] = useState(1), [condition, setCondition] = useState('');
   const [data, setData] = useState<TrainingComparison | null>(null);
   const [error, setError] = useState<string | null>(null), [loading, setLoading] = useState(true);
@@ -38,8 +38,8 @@ export default function AimComparisonPanel() {
         <button onClick={() => { setLoading(true); void load(); }} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs"><RefreshCw size={15} />Yenile</button>
       </div>
       <div className="flex flex-wrap items-end gap-4 rounded-2xl border border-white/10 bg-[#0d2535] p-5">
-        <label className="flex min-w-44 flex-col gap-2 text-xs text-[#93adbe]">Oyun akışı<select aria-label="Karşılaştırma oyun akışı" value={protocol} onChange={(event) => { setLoading(true); setProtocol(event.target.value); setData(null); setStage(1); setCondition(''); }} className="rounded-lg border border-white/10 bg-[#071b29] p-3 text-white"><option value={REFERENCE_PROTOCOL}>Direct Aim · Referans tempo</option><option value={TRAINING_PROTOCOL}>Önceki kademeli kayıtlar</option></select></label>
-        <label className="flex min-w-40 flex-col gap-2 text-xs text-[#93adbe]">{protocol === REFERENCE_PROTOCOL ? 'Tempo bölümü' : 'Kademe'}<select aria-label="Karşılaştırma kademesi" value={stage} onChange={(event) => { setLoading(true); setStage(Number(event.target.value)); }} className="rounded-lg border border-white/10 bg-[#071b29] p-3 text-white">{stages.map((item) => <option key={item.level} value={item.level}>{item.level} · {item.name}</option>)}</select></label>
+        <label className="flex min-w-44 flex-col gap-2 text-xs text-[#93adbe]">Oyun akışı<select aria-label="Karşılaştırma oyun akışı" value={protocol} onChange={(event) => { setLoading(true); setProtocol(event.target.value); setData(null); setStage(1); setCondition(''); }} className="rounded-lg border border-white/10 bg-[#071b29] p-3 text-white"><option value={REFERENCE_PROTOCOL}>Direct Aim · 48px</option><option value={LEGACY_REFERENCE_PROTOCOL}>Önceki Direct Aim · 60px</option><option value={TRAINING_PROTOCOL}>Önceki kademeli kayıtlar</option></select></label>
+        <label className="flex min-w-40 flex-col gap-2 text-xs text-[#93adbe]">{isReferenceProtocol(protocol) ? 'Tempo bölümü' : 'Kademe'}<select aria-label="Karşılaştırma kademesi" value={stage} onChange={(event) => { setLoading(true); setStage(Number(event.target.value)); }} className="rounded-lg border border-white/10 bg-[#071b29] p-3 text-white">{stages.map((item) => <option key={item.level} value={item.level}>{item.level} · {item.name}</option>)}</select></label>
         <label className="flex min-w-64 flex-1 flex-col gap-2 text-xs text-[#93adbe]">Aygıt ve oyun alanı<select aria-label="Karşılaştırma koşulu" value={condition || data?.condition || ''} onChange={(event) => { setLoading(true); setCondition(event.target.value); }} className="rounded-lg border border-white/10 bg-[#071b29] p-3 text-white">{!data?.conditions.length && <option value="">Henüz uygun kayıt yok</option>}{data?.conditions.map((item) => <option key={item.key} value={item.key}>{deviceName(item.inputDevice)} · {item.key.split(':')[1].replace('x', ' × ')} · {item.players} oyuncu</option>)}</select></label>
         <label className="flex min-w-44 flex-col gap-2 text-xs text-[#93adbe]">Sırala<select aria-label="Karşılaştırma sıralaması" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="rounded-lg border border-white/10 bg-[#071b29] p-3 text-white"><option value="name">Oyuncu adı</option><option value="response">Hedefe erişim süresi</option><option value="accuracy">Tıklama doğruluğu</option><option value="path">Mouse yol verimi</option></select></label>
       </div>
@@ -47,7 +47,7 @@ export default function AimComparisonPanel() {
         {[
           ['Bu koşuldaki oyuncu', String(rows.length)],
           ['Grup ortanca erişimi', aimMs(data?.groupMedianResponseMs)],
-          [protocol === REFERENCE_PROTOCOL ? 'Seçili tempo bölümü' : 'Seçili kademe', `${stage} / ${stages.length} · ${stages[stage - 1].name}`],
+          [isReferenceProtocol(protocol) ? 'Seçili tempo bölümü' : 'Seçili kademe', `${stage} / ${stages.length} · ${stages[stage - 1].name}`],
         ].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/10 bg-[#0d2535] p-5"><p className="text-xs text-[#91aabc]">{label}</p><p className="mt-2 text-xl font-semibold tabular-nums">{value}</p></div>)}
       </div>
       {error && <p role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 p-4 text-sm text-red-200">{error}</p>}

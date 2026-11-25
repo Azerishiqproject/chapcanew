@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase/firestore';
 import { api, errorMessage, type PageCursor } from './api-client';
 import type { AimMetrics, AimSettings, EndReason, RecordedAimEvent } from './aim-game';
-import type { TrainingEnvironment, stageMetrics } from './aim-training';
+import { REFERENCE_PROTOCOL, type TrainingEnvironment, type stageMetrics } from './aim-training';
 import type { TrainingComparisonRow } from './aim-comparison';
 
 export interface AimSession extends Partial<AimMetrics> {
@@ -34,7 +34,7 @@ export interface TrainingComparison {
   conditions: { key: string; players: number; inputDevice: string }[];
   groupMedianResponseMs: number | null; rows: TrainingComparisonRow[];
 }
-export async function getTrainingComparison(stage = 1, condition = '', protocol = 'reference-video-v1') {
+export async function getTrainingComparison(stage = 1, condition = '', protocol: string = REFERENCE_PROTOCOL) {
   return api<TrainingComparison>(`aim/comparison?${new URLSearchParams({ stage: String(stage), protocol, ...(condition ? { condition } : {}) })}`);
 }
 
