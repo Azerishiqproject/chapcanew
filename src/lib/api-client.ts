@@ -17,9 +17,9 @@ function decode(value: unknown): unknown {
   }
   return value;
 }
-export async function api<T>(path: string, method = 'GET', body?: unknown, options: { keepalive?: boolean } = {}): Promise<T> {
+export async function api<T>(path: string, method = 'GET', body?: unknown, options: { keepalive?: boolean; signal?: AbortSignal } = {}): Promise<T> {
   const response = await fetch(`/api/${path}`, {
-    method, credentials: 'same-origin', cache: 'no-store', keepalive: options.keepalive,
+    method, credentials: 'same-origin', cache: 'no-store', keepalive: options.keepalive, signal: options.signal,
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(encode(body)),
   });

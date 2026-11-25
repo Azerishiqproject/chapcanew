@@ -136,3 +136,6 @@
 
 .captchaProgress { background: white; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; font-weight: bold; color: #247a58; }
 .loading a { display: block; margin-top: 16px; text-align: center; color: #247a58; text-decoration: underline; }
+
+.syncNotice { margin: 12px var(--gutter); padding: 10px; border: 1px solid #e2d7ac; background: #fff9e9; font-size: 12px; }
+.syncNotice button { margin-left: 8px; text-decoration: underline; }

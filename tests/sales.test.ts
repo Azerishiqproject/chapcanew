@@ -37,12 +37,12 @@ test('Official loader groups identical floor plans and merges all building secto
     paths.push(path);
     if (path.startsWith('/getSectorFloors/')) return { floors: [{ id: 100, floor_number: 2, sector_floor_plan_id: 90 }, { id: 101, floor_number: 3, sector_floor_plan_id: 90 }] };
     return { apartments: [{ entrance_number: 319, apartment_number: 1, count_of_rooms: 3, internal_size: 80, external_size: 90 }] };
-  });
+  }, true);
   assert.equal(paths.length, source.sectors.length * 2);
   assert.equal(result.complete, true);
   assert.equal(findApartment({ projectId: '300016', building: '1', entrance: '319', floor: '3', apartment: '1' }, result)?.rooms, 3);
   await assert.rejects(fetchBuilding('300016', '../../fake'), /Bina tapılmadı/);
-  await assert.rejects(fetchBuilding('300016', '1', async () => ({})), /Invalid floor list/);
+  await assert.rejects(fetchBuilding('300016', '1', async () => ({}), true), /Invalid floor list/);
 });
 test('Stage timing includes returning to choices and stops exactly once', () => {
   let at = 0; const clock = new SalesClock(() => at);

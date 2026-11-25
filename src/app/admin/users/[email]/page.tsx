@@ -8,7 +8,8 @@ import { getUserByEmail, User as UserType } from '@/lib/users';
 import { getUserChapcaSessions, ChapcaSession } from '@/lib/chapcaSessions';
 import { getAimOverview, type AimOverview } from '@/lib/aimSessions';
 import AimAnalyticsPanel from '@/components/AimAnalyticsPanel';
-import { getUserSalesSessions, SalesSession } from '@/lib/salesSessions';
+import { getSalesOverview, type SalesOverview } from '@/lib/salesSessions';
+import SalesAnalyticsPanel from '@/components/SalesAnalyticsPanel';
 import { Timestamp } from 'firebase/firestore';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import {
@@ -38,7 +39,7 @@ export default function UserDetailPage() {
   const [user, setUserData] = useState<UserType | null>(null);
   const [chapcaSessions, setChapcaSessions] = useState<(ChapcaSession & { id: string })[]>([]);
   const [aimOverview, setAimOverview] = useState<AimOverview | null>(null);
-  const [salesSessions, setSalesSessions] = useState<(SalesSession & { id: string })[]>([]);
+  const [salesOverview, setSalesOverview] = useState<SalesOverview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'info' | 'chapca' | 'aim' | 'sales'>('info');
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
@@ -93,13 +94,8 @@ export default function UserDetailPage() {
       try { setAimOverview(await getAimOverview(decodeURIComponent(userEmail))); }
       catch (error) { console.error('Aim overview could not be loaded:', error); }
 
-      // Load sales sessions
-      const salesResult = await getUserSalesSessions(decodeURIComponent(userEmail));
-      if (salesResult.error) {
-        console.error('Error loading sales sessions:', salesResult.error);
-      } else {
-        setSalesSessions(salesResult.sessions);
-      }
+      try { setSalesOverview(await getSalesOverview(decodeURIComponent(userEmail))); }
+      catch (error) { console.error('Sales overview could not be loaded:', error); }
     } catch (error) {
       console.error('Error loading data:', error);
       alert('Error loading user data');
@@ -140,19 +136,6 @@ export default function UserDetailPage() {
     totalDuration: chapcaSessions.reduce((sum, s) => sum + (s.totalDuration || 0), 0),
   };
 
-  const salesStats = {
-    totalSessions: salesSessions.length,
-    avgStep1: salesSessions.length > 0
-      ? salesSessions.reduce((sum, s) => sum + s.step1Duration, 0) / salesSessions.length
-      : 0,
-    avgStep2: salesSessions.length > 0
-      ? salesSessions.reduce((sum, s) => sum + s.step2Duration, 0) / salesSessions.length
-      : 0,
-    avgCaptcha: salesSessions.length > 0
-      ? salesSessions.reduce((sum, s) => sum + s.captchaDuration, 0) / salesSessions.length
-      : 0,
-    totalCorrect: salesSessions.reduce((sum, s) => sum + s.correctCaptchas, 0),
-  };
 
   const toggleSession = (sessionId: string) => {
     setExpandedSessions(prev => {
@@ -276,7 +259,7 @@ export default function UserDetailPage() {
                 { id: 'info', label: 'Statistika', icon: Activity },
                 { id: 'chapca', label: `Security (${chapcaSessions.length})`, icon: ShieldCheck },
                 { id: 'aim', label: `Direct Aim (${aimOverview?.totalPlays ?? 0})`, icon: Target },
-                { id: 'sales', label: `Sales (${salesSessions.length})`, icon: ShoppingCart }
+                { id: 'sales', label: `Sales (${salesOverview?.totalPlays ?? '—'})`, icon: ShoppingCart }
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -352,20 +335,20 @@ export default function UserDetailPage() {
                     </h3>
                     <div className="grid grid-cols-2 gap-3.5">
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">Cəmi Satış</span>
-                        <p className="text-xl font-black italic mt-1">{salesStats.totalSessions}</p>
+                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">Başladılan turlar</span>
+                        <p className="text-xl font-black italic mt-1">{salesOverview?.totalPlays ?? '—'}</p>
                       </div>
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">AVG Proses</span>
-                        <p className="text-xl font-black italic mt-1">{(salesStats.avgStep1 + salesStats.avgStep2).toFixed(1)}s</p>
+                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">Ortalama tamamlanan tur</span>
+                        <p className="text-xl font-black italic mt-1">{salesOverview?.averageDurationMs != null ? (salesOverview.averageDurationMs / 1000).toFixed(1) + 's' : '—'}</p>
                       </div>
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                         <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">AVG Captcha</span>
-                        <p className="text-xl font-black italic mt-1 text-yellow-500">{salesStats.avgCaptcha.toFixed(1)}s</p>
+                        <p className="text-xl font-black italic mt-1 text-yellow-500">{salesOverview?.averageCaptchaMs != null ? (salesOverview.averageCaptchaMs / 1000).toFixed(1) + 's' : '—'}</p>
                       </div>
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">Düzgünlük</span>
-                        <p className="text-xl font-black italic mt-1 text-green-500">{salesStats.totalCorrect}</p>
+                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">Doğru CAPTCHA</span>
+                        <p className="text-xl font-black italic mt-1 text-green-500">{salesOverview?.totalCorrect ?? '—'}</p>
                       </div>
                     </div>
                   </div>
@@ -433,77 +416,7 @@ export default function UserDetailPage() {
 
               {activeTab === 'aim' && <AimAnalyticsPanel email={decodeURIComponent(userEmail)} />}
 
-              {/* Sales List */}
-              {activeTab === 'sales' && (
-                <div className="space-y-4">
-                  {salesSessions.length === 0 ? (
-                    <div className="bg-white/5 rounded-[40px] p-32 text-center border border-dashed border-white/10">
-                      <Search className="mx-auto mb-6 text-white/10" size={64} />
-                      <p className="text-white/20 font-black uppercase tracking-[6px]">Satış seansı tapılmadı</p>
-                    </div>
-                  ) : (
-                    salesSessions.map((session) => {
-                      const isExpanded = expandedSessions.has(session.id);
-                      return (
-                        <div key={session.id} className="group">
-                          <div
-                            onClick={() => toggleSession(session.id)}
-                            className={`bg-white/5 border border-white/10 p-6 flex flex-col sm:flex-row items-center justify-between cursor-pointer transition-all duration-500 hover:bg-white/10 ${isExpanded ? 'rounded-t-[24px] border-yellow-500/40 border-b-0 shadow-2xl bg-white/[0.08]' : 'rounded-[24px]'}`}
-                          >
-                            <div className="flex items-center gap-6">
-                              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 ${isExpanded ? 'bg-yellow-500 text-black' : 'bg-yellow-500/10 text-yellow-500'}`}>
-                                <ShoppingCart size={28} />
-                              </div>
-                              <div>
-                                <p className="text-white font-black text-xl tracking-tighter italic">{formatDateTime(session.createdAt)}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></span>
-                                  <p className="text-[11px] font-black text-white/40 uppercase tracking-[3px]">{session.project}</p>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-10 mt-6 sm:mt-0">
-                              <div className="text-right">
-                                <p className="text-[9px] font-black text-white/20 uppercase tracking-[3px] mb-1 px-1 text-center">Cəmi Vaxt</p>
-                                <p className="text-2xl font-black italic text-white tabular-nums drop-shadow-2xl">{formatDuration(session.totalDuration || session.totalDurationSeconds * 1000)}s</p>
-                              </div>
-                              <div className={`w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-yellow-500/20 transition-all ${isExpanded ? 'rotate-180 bg-yellow-500/20' : ''}`}>
-                                <ChevronDown size={20} className={isExpanded ? 'text-yellow-500' : 'text-white/20'} />
-                              </div>
-                            </div>
-                          </div>
-                          {isExpanded && (
-                            <div className="bg-white/[0.04] rounded-b-[24px] border-x border-b border-yellow-500/20 p-8 animate-in slide-in-from-top-6 duration-500">
-                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
-                                <div className="bg-white/5 p-5 rounded-2xl border border-white/5 group/card hover:bg-white/10 transition-all">
-                                  <Clock size={24} className="mx-auto mb-2 text-yellow-500 group-hover/card:scale-110 transition-transform" />
-                                  <span className="text-[10px] font-black text-white/20 uppercase tracking-[2px]">Step 1 (Seçimlər)</span>
-                                  <p className="text-xl font-black italic mt-1 text-white">{session.step1Duration.toFixed(1)}s</p>
-                                </div>
-                                <div className="bg-white/5 p-5 rounded-2xl border border-white/5 group/card hover:bg-white/10 transition-all">
-                                  <Search size={24} className="mx-auto mb-2 text-blue-400 group-hover/card:scale-110 transition-transform" />
-                                  <span className="text-[10px] font-black text-white/20 uppercase tracking-[2px]">Step 2 (Axtarış)</span>
-                                  <p className="text-xl font-black italic mt-1 text-white">{session.step2Duration.toFixed(1)}s</p>
-                                </div>
-                                <div className="bg-white/5 p-5 rounded-2xl border border-white/5 group/card hover:bg-white/10 transition-all">
-                                  <ShieldCheck size={24} className="mx-auto mb-2 text-[#00965e] group-hover/card:scale-110 transition-transform" />
-                                  <span className="text-[10px] font-black text-white/20 uppercase tracking-[2px]">Captcha Müddəti</span>
-                                  <p className="text-xl font-black italic mt-1 text-white">{session.captchaDuration.toFixed(1)}s</p>
-                                </div>
-                                <div className="bg-white/5 p-5 rounded-2xl border border-white/5 group/card hover:bg-white/10 transition-all">
-                                  <Activity size={24} className="mx-auto mb-2 text-green-400 group-hover/card:scale-110 transition-transform" />
-                                  <span className="text-[10px] font-black text-white/20 uppercase tracking-[2px]">Doğru Seanslar</span>
-                                  <p className="text-xl font-black italic mt-1 text-white">{session.correctCaptchas} <span className="text-white/20 text-base">x</span></p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
+              {activeTab === 'sales' && <SalesAnalyticsPanel key={userEmail} email={decodeURIComponent(userEmail)} initialOverview={salesOverview} onOverviewChange={setSalesOverview} />}
             </div>
           </div>
         </main>

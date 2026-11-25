@@ -1,3 +1,8 @@
+import type { SalesOverview } from './sales-analytics';
+import type { RecordedSalesEvent, SalesStage } from './sales-telemetry';
+import type { CaptchaChallenge } from './sales-flow';
+import type { CaptchaType } from './captcha-config';
+export type { SalesOverview } from './sales-analytics';
 import type { SalesApartment } from './sales-catalog';
 import { Timestamp } from 'firebase/firestore';
 import { api, errorMessage, type PageCursor } from './api-client';
@@ -5,7 +10,7 @@ import { api, errorMessage, type PageCursor } from './api-client';
 export interface SalesSession {
     email: string;
     startTime: Timestamp;
-    endTime: Timestamp;
+    endTime: Timestamp | null;
     totalDuration: number; // milisaniye
     totalDurationSeconds: number;
     step1Duration: number;
@@ -16,6 +21,11 @@ export interface SalesSession {
     project: string;
     selection?: SalesApartment & { paymentMethod: 'own' | 'mortgage'; method: 'address'; catalogVersion: string };
     createdAt: Timestamp;
+    schemaVersion?: number; status?: 'playing' | 'completed' | 'aborted'; endReason?: string | null; updatedAt?: Timestamp;
+    phase?: SalesStage; phaseDurations?: Record<SalesStage, number>; searches?: number; resets?: number; backCount?: number; selectionChanges?: number; focusCount?: number; catalogErrors?: number; eventCount?: number;
+    address?: { projectId: string; building: string; entrance: string; floor: string; apartment: string }; paymentMethod?: string;
+    captchaTypes?: Partial<Record<CaptchaType, { correct: number; incorrect: number; solveMs: number }>>;
+    captchaConfig?: { enabled: boolean; requiredCount: number; allowedTypes: CaptchaType[]; plan: CaptchaChallenge[] };
 }
 
 export async function saveSalesSession(session: Omit<SalesSession, 'createdAt'>) {
@@ -32,3 +42,7 @@ export async function getUserSalesSessions(email: string, pageSize = 10, lastDoc
     return { ...result, error: null };
   } catch (error) { return { sessions: [], lastDoc: null, error: errorMessage(error) }; }
 }
+
+export function startSalesRun(clientRunId: string, plan: CaptchaChallenge[]) { return api<{ id: string }>('sales/runs', 'POST', { clientRunId, plan }); }
+export function getSalesOverview(email: string) { return api<SalesOverview>(`sales/overview?${new URLSearchParams({ email })}`); }
+export function getSalesEvents(id: string, cursor: string | null = null) { return api<{ events: RecordedSalesEvent[]; cursor: string | null; legacy: boolean }>(`sales/runs/${id}/events${cursor ? '?' + new URLSearchParams({ cursor }) : ''}`); }

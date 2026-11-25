@@ -1,0 +1,55 @@
+import test, { before, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
+import SalesAddressFields from '../src/components/sales/SalesAddressFields';
+import SalesAnalyticsPanel from '../src/components/SalesAnalyticsPanel';
+import { emptyAddress } from '../src/lib/sales-catalog';
+import { summarizeSalesSessions } from '../src/lib/sales-analytics';
+let ui: typeof import('@testing-library/react');
+before(async () => { const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' }); Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver, IS_REACT_ACT_ENVIRONMENT: true }); Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true }); ui = await import('@testing-library/react'); });
+afterEach(() => ui.cleanup());
+test('Native selects retain the same nodes/options across unrelated updates and follow dependent choices', () => {
+  const changes: unknown[] = [], focus: string[] = [], onChange = (field: string, value: string) => changes.push([field, value]), onFocus = (field: string) => focus.push(field);
+  const props = { rowClassName: 'row', address: { ...emptyAddress, projectId: '300016', building: '2', entrance: '307', floor: '5', apartment: '3' }, loading: false, error: '', onChange, onFocus };
+  const view = ui.render(<SalesAddressFields {...props} />), apartment = view.getByLabelText('Mənzil nömrəsi') as HTMLSelectElement;
+  const options = [...apartment.options];
+  for (let i = 0; i < 10; i++) view.rerender(<SalesAddressFields {...props} />);
+  assert.equal(view.getByLabelText('Mənzil nömrəsi'), apartment); assert.deepEqual([...apartment.options], options);
+  ui.fireEvent.focus(apartment); ui.fireEvent.change(apartment, { target: { value: '2' } });
+  assert.deepEqual(focus, ['apartment']); assert.deepEqual(changes, [['apartment', '2']]);
+  view.rerender(<SalesAddressFields {...props} address={{ ...props.address, entrance: '305', floor: '', apartment: '' }} />);
+  assert.equal(apartment.disabled, true); assert.equal(apartment.value, ''); assert.equal((view.getByLabelText('Mərtəbə nömrəsi') as HTMLSelectElement).disabled, false);
+});
+test('Loading/errors never disable the building selector and become retryable rather than freezing all controls', () => {
+  const props = { rowClassName: 'row', address: { ...emptyAddress, projectId: '300016', building: '1' }, loading: true, error: '', onChange() {}, onFocus() {} };
+  const view = ui.render(<SalesAddressFields {...props} />);
+  assert.equal((view.getByLabelText('Bina nömrəsi') as HTMLSelectElement).disabled, false);
+  assert.equal((view.getByLabelText('Giriş nömrəsi') as HTMLSelectElement).disabled, true);
+  view.rerender(<SalesAddressFields {...props} loading={false} error="unavailable" />);
+  assert.equal((view.getByLabelText('Bina nömrəsi') as HTMLSelectElement).disabled, false);
+  view.rerender(<SalesAddressFields {...props} loading={false} address={{ ...props.address, building: '2' }} />);
+  assert.equal((view.getByLabelText('Giriş nömrəsi') as HTMLSelectElement).disabled, false);
+});
+test('Admin shows all-history totals independent of displayed pages and reveals each run timeline', async context => {
+  const stats = summarizeSalesSessions([{ totalDuration: 10000, step1Duration: 3, step2Duration: 7, captchaDuration: 1, correctCaptchas: 1, incorrectCaptchas: 1 }, { totalDuration: 20000, step1Duration: 5, step2Duration: 15, captchaDuration: 0, correctCaptchas: 0, incorrectCaptchas: 0 }, ...Array.from({ length: 23 }, () => ({ status: 'playing', schemaVersion: 2 }))]);
+  const at = Date.now() - 10000;
+  const session = { id: 'tracked-run', schemaVersion: 2, email: 'fixture@example.com', startTime: { $timestamp: at }, createdAt: { $timestamp: at }, endTime: { $timestamp: at + 10000 }, project: 'Lənkəran Yaşayış Kompleksi', status: 'completed', totalDuration: 10000, step1Duration: 3, step2Duration: 7, captchaDuration: 1, correctCaptchas: 1, incorrectCaptchas: 1, searches: 1, resets: 0, backCount: 0, selectionChanges: 7, eventCount: 2, address: { projectId: '300016', building: '2', entrance: '307', floor: '5', apartment: '3' } };
+  const requests: string[] = [];
+  context.mock.method(globalThis, 'fetch', async (input: string) => {
+    requests.push(input);
+    if (input.includes('sales/overview')) return Response.json(stats);
+    if (input.includes('/events')) return Response.json(input.includes('cursor=') ? { events: [{ seq: 1, atMs: 10000, type: 'finish', reason: 'selected', stage: 'search' }], cursor: null, legacy: false } : { events: [{ seq: 0, atMs: 9000, type: 'search', found: true, stage: 'search' }], cursor: '00000003', legacy: false });
+    return Response.json(input.includes('cursor=') ? { sessions: [{ ...session, id: 'legacy-run', schemaVersion: undefined, totalDuration: 20000 }, ...Array.from({ length: 4 }, (_, i) => ({ ...session, id: `later-${i}`, project: '', status: 'playing', totalDuration: 0 }))], lastDoc: null } : { sessions: [session, ...Array.from({ length: 19 }, (_, i) => ({ ...session, id: `open-${i}`, project: '', status: 'playing', totalDuration: 0 }))], lastDoc: 'page-two' });
+  });
+  const view = ui.render(<SalesAnalyticsPanel email="fixture@example.com" initialOverview={null} onOverviewChange={() => {}} />);
+  await ui.waitFor(() => assert.ok(view.getByText('25')));
+  assert.ok(view.getAllByText('10.00 san').length >= 2); assert.ok(view.getByText('23'));
+  ui.fireEvent.click(view.getByRole('button', { name: /Lənkəran Yaşayış Kompleksi · Tamamlandı/ }));
+  await ui.waitFor(() => assert.ok(view.getByText('Axtar: mənzil tapıldı')));
+  assert.match(view.getByText(/Bina 2/).textContent!, /Giriş 307.*Mərtəbə 5.*Mənzil 3/);
+  ui.fireEvent.click(view.getByRole('button', { name: 'Daha çox hadisə' }));
+  await ui.waitFor(() => assert.ok(view.getByText('Mənzil seçildi')));
+  ui.fireEvent.click(view.getByRole('button', { name: 'Daha çox tur' }));
+  await ui.waitFor(() => assert.equal(view.getAllByRole('button', { name: /Lənkəran Yaşayış Kompleksi · Tamamlandı/ }).length, 2));
+  assert.ok(view.getByText('25')); assert.ok(requests.some(path => path.includes('cursor=page-two')));
+});

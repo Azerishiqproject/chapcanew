@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { api, errorMessage } from '@/lib/api-client';
@@ -11,8 +11,8 @@ import { logoutUser } from '@/store/slices/authSlice';
 import { replaceCaptchaSettings } from '@/store/slices/captchaSlice';
 import { captchaSettingsErrors, normalizeCaptchaSettings, resolveCaptchaSettings, type CaptchaState, type CaptchaType } from '@/lib/captcha-config';
 import { getUserCaptchaSettings } from '@/lib/captchaSettings';
-import { saveSalesSession, type SalesSession } from '@/lib/salesSessions';
-import { addressOptions, changeAddress, emptyAddress, findApartment, projectFor, salesCatalog, type SalesAddress, type SalesApartment, type CatalogBuilding } from '@/lib/sales-catalog';
+import { startSalesRun, type SalesSession } from '@/lib/salesSessions';
+import { changeAddress, emptyAddress, findApartment, projectFor, salesCatalog, type SalesAddress, type SalesApartment, type CatalogBuilding } from '@/lib/sales-catalog';
 import { captchaPlan, CaptchaSequence, SalesClock, type SalesPhase } from '@/lib/sales-flow';
 import DateCaptcha from '@/components/DateCaptcha';
 import NumberCaptcha from '@/components/NumberCaptcha';
@@ -21,13 +21,22 @@ import BirthDateCaptcha from '@/components/BirthDateCaptcha';
 import PuzzleCaptcha from '@/components/PuzzleCaptcha';
 import PersonalInfoCaptcha from '@/components/PersonalInfoCaptcha';
 import SalesCompletion from './SalesCompletion';
+import SalesAddressFields from './SalesAddressFields';
+import { SalesRecorder } from '@/lib/sales-recorder';
+import type { SalesAction } from '@/lib/sales-telemetry';
 import styles from './sales.module.css';
 
 const paymentLabels = { own: 'Öz vəsaiti hesabına', mortgage: 'İpoteka krediti hesabına' };
 type Payment = keyof typeof paymentLabels;
-type SavedSession = Omit<SalesSession, 'createdAt'>;
-interface Run { start: number; clock: SalesClock; settings: CaptchaState; plan: ReturnType<typeof captchaPlan>; sequence: CaptchaSequence }
+type SavedSession = Omit<SalesSession, 'createdAt' | 'endTime'> & { endTime: Timestamp };
+interface Run { start: number; clock: SalesClock; settings: CaptchaState; plan: ReturnType<typeof captchaPlan>; sequence: CaptchaSequence; recorder: SalesRecorder }
 function countdown(seconds: number) { const left = Math.max(0, Math.ceil(seconds)); return `${Math.floor(left / 60).toString().padStart(2, '0')}:${(left % 60).toString().padStart(2, '0')}`; }
+
+function MethodCountdown({ start, wait }: { start: number; wait: number }) {
+  const [elapsed, setElapsed] = useState(() => (Date.now() - start) / 1000);
+  useEffect(() => { const timer = setInterval(() => setElapsed((Date.now() - start) / 1000), 1000); return () => clearInterval(timer); }, [start]);
+  return <b>{countdown(wait - elapsed)}</b>;
+}
 
 export default function SalesSimulator() {
   const router = useRouter(), dispatch = useAppDispatch();
@@ -36,14 +45,18 @@ export default function SalesSimulator() {
   const [settingsError, setSettingsError] = useState('');
   const [phase, setPhase] = useState<SalesPhase>('project');
   const [address, setAddress] = useState<SalesAddress>({ ...emptyAddress });
+  const loadedBuildingsRef = useRef<Record<string, CatalogBuilding>>({});
   const [loadedBuildings, setLoadedBuildings] = useState<Record<string, CatalogBuilding>>({});
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState('');
   const catalogRequest = useRef(0);
+  const catalogController = useRef<AbortController | null>(null);
+  const recorderRef = useRef<SalesRecorder | null>(null);
+  const [syncError, setSyncError] = useState('');
+  const clientRunId = useRef<string | null>(null);
   const [payment, setPayment] = useState<Payment | ''>('');
   const [method, setMethod] = useState(false);
   const [result, setResult] = useState<SalesApartment | null>(null);
-  const [elapsed, setElapsed] = useState(0);
   const [progress, setProgress] = useState(0);
   const [captchaOpen, setCaptchaOpen] = useState(false);
   const [verified, setVerified] = useState(false);
@@ -60,29 +73,46 @@ export default function SalesSimulator() {
   const dialog = useRef<HTMLDivElement>(null);
   const project = projectFor(address.projectId);
   const loadedBuilding = loadedBuildings[`${address.projectId}/${address.building}`];
-  const options = addressOptions(address, loadedBuilding);
   const apartment = findApartment(address, loadedBuilding);
 
   useEffect(() => {
     if (!user?.uid) return;
     let cancelled = false;
-    getUserCaptchaSettings(user.uid).then(({ settings, error }) => {
+    getUserCaptchaSettings(user.uid).then(async ({ settings, error }) => {
       if (cancelled) return;
       if (error) { setSettingsError(error); return; }
       const config = normalizeCaptchaSettings(resolveCaptchaSettings(settings));
       const errors = captchaSettingsErrors(config);
       if (errors.length) { setSettingsError(errors.join(' ')); return; }
       const plan = captchaPlan(config.enabled, config.requiredCount, config.allowedTypes);
-      dispatch(replaceCaptchaSettings(config));
-      setRun({ start: Date.now(), clock: new SalesClock(), settings: config, plan, sequence: new CaptchaSequence(plan) });
+      try {
+        let storage: Storage | null = null, tabId = 'tab-' + crypto.randomUUID();
+        try { storage = window.localStorage; tabId = sessionStorage.getItem('chapca_sales_tab') || tabId; sessionStorage.setItem('chapca_sales_tab', tabId); } catch {}
+        void SalesRecorder.recover(user.uid, tabId, storage);
+        clientRunId.current ??= crypto.randomUUID();
+        const { id } = await startSalesRun(clientRunId.current, plan);
+        const recorder = new SalesRecorder(id, user.uid, tabId, storage);
+        if (cancelled) { void recorder.finish('navigation').catch(() => {}); return; }
+        recorderRef.current = recorder;
+        dispatch(replaceCaptchaSettings(config));
+        setRun({ start: Date.now(), clock: new SalesClock(), settings: config, plan, sequence: new CaptchaSequence(plan), recorder });
+      } catch (error) { if (!cancelled) setSettingsError(errorMessage(error)); }
     });
     return () => { cancelled = true; };
   }, [dispatch, user?.uid]);
+  const track = useCallback((action: SalesAction) => { recorderRef.current?.record(action); }, []);
+  const focusField = useCallback((field: keyof SalesAddress) => track({ type: 'focus', field }), [track]);
+  const flush = useCallback(async () => {
+    try { await recorderRef.current?.flush(); setSyncError(''); } catch { setSyncError('Turun bəzi qeydləri gözləyir. Yenidən saxlayın.'); }
+  }, []);
   useEffect(() => {
-    if (!run || phase === 'complete') return;
-    const timer = setInterval(() => setElapsed((Date.now() - run.start) / 1000), 1000);
-    return () => clearInterval(timer);
-  }, [run, phase]);
+    if (!run) return;
+    const timer = setInterval(() => { void flush(); }, 3000);
+    const visibility = () => { track({ type: 'visibility', visible: document.visibilityState === 'visible' }); void flush(); };
+    const leave = () => { void run.recorder.finish('navigation').catch(() => {}); };
+    window.addEventListener('pagehide', leave); document.addEventListener('visibilitychange', visibility);
+    return () => { clearInterval(timer); window.removeEventListener('pagehide', leave); document.removeEventListener('visibilitychange', visibility); catalogController.current?.abort(); leave(); recorderRef.current = null; };
+  }, [run, track, flush]);
   useEffect(() => () => { if (feedbackTimer.current) clearTimeout(feedbackTimer.current); }, []);
   useEffect(() => {
     if (!captchaOpen) return;
@@ -92,60 +122,64 @@ export default function SalesSimulator() {
     return () => previous?.focus();
   }, [captchaOpen]);
 
-  function change(field: keyof SalesAddress, value: string) {
+  const loadBuilding = useCallback(async (projectId: string, building: string) => {
+    const source = projectFor(projectId)?.buildings.find(item => item.number === building), key = `${projectId}/${building}`;
+    if (!source || source.complete || loadedBuildingsRef.current[key]) return;
+    catalogController.current?.abort(); const controller = new AbortController(); catalogController.current = controller;
+    const request = ++catalogRequest.current; setCatalogLoading(true); setCatalogError(''); track({ type: 'catalog', projectId, building, status: 'loading' });
+    try {
+      const data = await api<{ building: CatalogBuilding }>(`sales/catalog/${encodeURIComponent(projectId)}/${encodeURIComponent(building)}`, 'GET', undefined, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
+      loadedBuildingsRef.current[key] = data.building; setLoadedBuildings({ ...loadedBuildingsRef.current }); track({ type: 'catalog', projectId, building, status: 'ready' });
+    } catch (error) { if (!controller.signal.aborted) { track({ type: 'catalog', projectId, building, status: 'error' }); if (catalogRequest.current === request) setCatalogError(errorMessage(error)); } }
+    finally { if (catalogRequest.current === request) setCatalogLoading(false); }
+  }, [track]);
+  const change = useCallback((field: keyof SalesAddress, value: string) => {
+    track({ type: 'select', field, value });
     setAddress(previous => changeAddress(previous, field, value)); setResult(null); setCatalogError('');
     if (field === 'projectId' || field === 'building') {
-      catalogRequest.current++; setCatalogLoading(false);
+      catalogRequest.current++; catalogController.current?.abort(); setCatalogLoading(false);
       if (field === 'building' && value) void loadBuilding(address.projectId, value);
     }
-  }
-  async function loadBuilding(projectId: string, building: string) {
-    const source = projectFor(projectId)?.buildings.find(item => item.number === building), key = `${projectId}/${building}`;
-    if (!source || source.complete || loadedBuildings[key]) return;
-    const request = ++catalogRequest.current; setCatalogLoading(true); setCatalogError('');
-    try {
-      const data = await api<{ building: CatalogBuilding }>(`sales/catalog/${encodeURIComponent(projectId)}/${encodeURIComponent(building)}`);
-      setLoadedBuildings(previous => ({ ...previous, [key]: data.building }));
-    } catch (error) { if (catalogRequest.current === request) setCatalogError(errorMessage(error)); }
-    finally { if (catalogRequest.current === request) setCatalogLoading(false); }
-  }
+  }, [address.projectId, loadBuilding, track]);
   function proceed(action: 'method' | 'search') {
     if (!run) return;
-    if (action === 'method') { run.clock.enter(2); setPhase('search'); }
-    else setResult(apartment);
+    if (action === 'method') { track({ type: 'phase', phase: 'search' }); run.clock.enter(2); setPhase('search'); }
+    else { track({ type: 'search', found: !!apartment }); setResult(apartment); }
   }
   function gated(action: 'method' | 'search') {
     if (!run) return;
     const step = action === 'method' ? 1 : 2;
     if (run.sequence.current?.step === step) {
       pendingAction.current = action;
-      if (run.sequence.open(step)) setCaptchaOpen(true);
+      if (run.sequence.open(step)) { track({ type: 'captcha-open', index: run.sequence.progress }); setCaptchaOpen(true); }
     } else proceed(action);
   }
   function closeCaptcha() {
-    if (run?.sequence.close()) setCaptchaOpen(false);
+    if (run?.sequence.close()) { track({ type: 'captcha-close', index: run.sequence.progress }); setCaptchaOpen(false); }
   }
   function verify(correct: boolean) {
     if (!run || busy.current || !run.sequence.answer(correct)) return;
+    track({ type: 'captcha-result', index: run.sequence.progress, correct });
     busy.current = true;
     if (!correct) {
       setIncorrect(run.sequence.incorrect); setRetrying(true);
-      feedbackTimer.current = setTimeout(() => { run.sequence.retry(); busy.current = false; setRetrying(false); }, 1500);
+      feedbackTimer.current = setTimeout(() => { run.sequence.retry(); track({ type: 'captcha-retry', index: run.sequence.progress }); busy.current = false; setRetrying(false); }, 1500);
       return;
     }
     setLogs([...run.sequence.logs]); setVerified(true);
     feedbackTimer.current = setTimeout(() => {
       const action = pendingAction.current, step = action === 'method' ? 1 : 2;
       run.sequence.advance(); setProgress(run.sequence.progress); setVerified(false); setCaptchaKey(key => key + 1); busy.current = false;
-      if (run.sequence.current?.step === step) run.sequence.open(step);
+      if (run.sequence.current?.step === step) { run.sequence.open(step); track({ type: 'captcha-open', index: run.sequence.progress }); }
       else { setCaptchaOpen(false); proceed(action); }
     }, 1000);
   }
 
-  async function persist(session: SavedSession) {
+  async function persist() {
+    if (!run) return;
     setSaveState('saving');
-    const response = await saveSalesSession(session);
-    setSaveState(response.error ? 'error' : 'saved'); setSaveError(response.error || '');
+    try { await run.recorder.flush(); setSaveState('saved'); setSaveError(''); }
+    catch (error) { setSaveState('error'); setSaveError(errorMessage(error)); }
   }
   function finish() {
     if (!run || !result || !user || finished.current || run.sequence.progress !== run.plan.length) return;
@@ -157,17 +191,17 @@ export default function SalesSimulator() {
       captchaDuration: logs.reduce((sum, log) => sum + log.duration, 0), correctCaptchas: logs.length, incorrectCaptchas: incorrect,
       project: project!.name, selection: { ...result, paymentMethod: payment as Payment, method: 'address', catalogVersion: salesCatalog.version },
     };
-    setSaved(session); setPhase('complete'); void persist(session);
+    track({ type: 'finish', reason: 'selected' }); setSaved(session); setPhase('complete'); void persist();
   }
   function back() {
     if (phase === 'project') router.push('/demo');
-    else if (phase === 'payment') setPhase('project');
-    else if (phase === 'method') setPhase('payment');
-    else { run?.clock.enter(1); setPhase('method'); setResult(null); }
+    else if (phase === 'payment') { track({ type: 'phase', phase: 'project' }); setPhase('project'); }
+    else if (phase === 'method') { track({ type: 'phase', phase: 'payment' }); setPhase('payment'); }
+    else { track({ type: 'phase', phase: 'method' }); run?.clock.enter(1); setPhase('method'); setResult(null); }
   }
   function next() {
-    if (phase === 'project' && project) setPhase('payment');
-    else if (phase === 'payment' && payment) setPhase('method');
+    if (phase === 'project' && project) { track({ type: 'phase', phase: 'payment' }); setPhase('payment'); }
+    else if (phase === 'payment' && payment) { track({ type: 'phase', phase: 'method' }); setPhase('method'); }
     else if (phase === 'method' && method) gated('method');
     else if (phase === 'search' && result) finish();
   }
@@ -187,10 +221,10 @@ export default function SalesSimulator() {
   return <div className={styles.page} data-view={phase}>
     <header className={styles.header}>
       <Image src="/mida-logo.svg" alt="MİDA" width={45} height={43} priority />
-      <div className={styles.account}><span>{(userData?.name || user?.email || '').toLocaleUpperCase('az')}</span><button onClick={async () => { const response = await dispatch(logoutUser()); if (logoutUser.fulfilled.match(response)) router.push('/login'); }}>Çıxış et <LogOut size={13} /></button></div>
+      <div className={styles.account}><span>{(userData?.name || user?.email || '').toLocaleUpperCase('az')}</span><button onClick={async () => { if (run) { try { await Promise.race([run.recorder.finish('logout'), new Promise(resolve => setTimeout(resolve, 1500))]); } catch {} } const response = await dispatch(logoutUser()); if (logoutUser.fulfilled.match(response)) router.push('/login'); }}>Çıxış et <LogOut size={13} /></button></div>
     </header>
     {complete && saved ? <>
-      <div className={styles.saveNotice} role="status">{saveState === 'saving' ? 'Nəticə yadda saxlanılır…' : saveState === 'saved' ? 'Nəticə yadda saxlanıldı.' : <span role="alert">Nəticə saxlanılmadı: {saveError} <button disabled={saveState !== 'error'} onClick={() => void persist(saved)}>Yenidən saxla</button></span>}</div>
+      <div className={styles.saveNotice} role="status">{saveState === 'saving' ? 'Nəticə yadda saxlanılır…' : saveState === 'saved' ? 'Nəticə yadda saxlanıldı.' : <span role="alert">Nəticə saxlanılmadı: {saveError} <button disabled={saveState !== 'error'} onClick={() => void persist()}>Yenidən saxla</button></span>}</div>
       <SalesCompletion simulationStartTime={run.start} simulationEndTime={saved.endTime.toMillis()} step1Duration={saved.step1Duration} step2Duration={saved.step2Duration} captchaTotalDuration={saved.captchaDuration} correctCaptchas={saved.correctCaptchas} incorrectCaptchas={saved.incorrectCaptchas} captchaLogs={logs} onRestart={() => window.location.reload()} />
     </> : <main className={styles.main}>
       <ol className={`${styles.steps} ${searching ? styles.searchSteps : ''}`} aria-label="Mənzil sifarişi mərhələləri">
@@ -199,11 +233,11 @@ export default function SalesSimulator() {
       {!searching ? <section className={styles.selectionPanel}>
         <nav className={styles.breadcrumb} aria-label="Seçimlər"><span>Mənzil sifarişi</span>{phase !== 'project' && <><b>›</b><strong>{project?.name}</strong></>}{phase === 'method' && payment && <><b>›</b><strong>{paymentLabels[payment]}</strong></>}</nav>
         <div className={styles.selectionBody}>
-          {phase === 'project' && <><h1>Layihə seçimi</h1><select className={styles.projectSelect} aria-label="Layihəni seçin" value={address.projectId} onChange={event => change('projectId', event.target.value)}><option value="">Layihəni seçin</option>{salesCatalog.projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></>}
-          {phase === 'payment' && <><h1>Ödəniş üsulu seçimi</h1><fieldset className={styles.payments}><legend className={styles.srOnly}>Ödəniş üsulu</legend>{(Object.keys(paymentLabels) as Payment[]).map(value => <label key={value}><input type="radio" name="payment" checked={payment === value} onChange={() => setPayment(value)} /><span>{paymentLabels[value]}</span>{value === 'mortgage' && <span title="İpoteka krediti ilə ödəniş" className={styles.info}><Info size={13} fill="#4c97d7" color="white" /></span>}</label>)}</fieldset></>}
+          {phase === 'project' && <><h1>Layihə seçimi</h1><select className={styles.projectSelect} onFocus={() => track({ type: 'focus', field: 'projectId' })} aria-label="Layihəni seçin" value={address.projectId} onChange={event => change('projectId', event.target.value)}><option value="">Layihəni seçin</option>{salesCatalog.projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></>}
+          {phase === 'payment' && <><h1>Ödəniş üsulu seçimi</h1><fieldset className={styles.payments}><legend className={styles.srOnly}>Ödəniş üsulu</legend>{(Object.keys(paymentLabels) as Payment[]).map(value => <label key={value}><input type="radio" name="payment" onFocus={() => track({ type: 'focus', field: 'payment' })} checked={payment === value} onChange={() => { track({ type: 'select', field: 'payment', value }); setPayment(value); }} /><span>{paymentLabels[value]}</span>{value === 'mortgage' && <span title="İpoteka krediti ilə ödəniş" className={styles.info}><Info size={13} fill="#4c97d7" color="white" /></span>}</label>)}</fieldset></>}
           {phase === 'method' && <><h1>Mənzil seçimi üsulu</h1><div className={styles.methods}>
-            <label className={`${styles.method} ${styles.addressMethod}`}><input type="radio" name="method" checked={method} onChange={() => setMethod(true)} /><span className={styles.methodLabel}><span className={styles.iconBubble}><House size={14} /></span>Ünvan üzrə</span></label>
-            {[{ text: 'Xəritə üzərində', Icon: Map, wait: 900 }, { text: 'Parametrlər üzrə', Icon: SlidersHorizontal, wait: 1800 }].map(({ text, Icon, wait }) => <div key={text} className={`${styles.method} ${styles.locked}`} aria-disabled="true"><div className={styles.lockPanel}><span>Seçim üsulunun<br />aktivləşməsinə<br />qalan vaxt:</span><div className={styles.lockBadge}><LockKeyhole size={18} fill="white" /><b>{countdown(wait - elapsed)}</b></div></div><span className={styles.methodLabel}><span className={styles.iconBubble}><Icon size={14} /></span>{text}</span></div>)}
+            <label className={`${styles.method} ${styles.addressMethod}`}><input type="radio" name="method" onFocus={() => track({ type: 'focus', field: 'method' })} checked={method} onChange={() => { track({ type: 'select', field: 'method', value: 'address' }); setMethod(true); }} /><span className={styles.methodLabel}><span className={styles.iconBubble}><House size={14} /></span>Ünvan üzrə</span></label>
+            {[{ text: 'Xəritə üzərində', Icon: Map, wait: 900 }, { text: 'Parametrlər üzrə', Icon: SlidersHorizontal, wait: 1800 }].map(({ text, Icon, wait }) => <div key={text} className={`${styles.method} ${styles.locked}`} aria-disabled="true"><div className={styles.lockPanel}><span>Seçim üsulunun<br />aktivləşməsinə<br />qalan vaxt:</span><div className={styles.lockBadge}><LockKeyhole size={18} fill="white" /><MethodCountdown start={run.start} wait={wait} /></div></div><span className={styles.methodLabel}><span className={styles.iconBubble}><Icon size={14} /></span>{text}</span></div>)}
           </div></>}
         </div>
       </section> : <div className={styles.searchGrid}>
@@ -211,8 +245,8 @@ export default function SalesSimulator() {
           <div className={styles.projectTitle}>{project?.name}</div>
           <form className={styles.filters} onSubmit={event => { event.preventDefault(); if (apartment) gated('search'); }}>
             <h1>Ünvan üzrə mənzil seçimi</h1>
-            {([{ field: 'building', label: 'Bina nömrəsi', values: options.buildings, enabled: true }, { field: 'entrance', label: 'Giriş nömrəsi', values: options.entrances, enabled: !!address.building }, { field: 'floor', label: 'Mərtəbə nömrəsi', values: options.floors, enabled: !!address.entrance }, { field: 'apartment', label: 'Mənzil nömrəsi', values: options.apartments, enabled: !!address.floor }] as const).map(({ field, label, values, enabled }) => <label className={styles.filterRow} key={field}><span>{label}</span><select aria-label={label} value={address[field]} disabled={!enabled || (field !== 'building' && (catalogLoading || !!catalogError))} onChange={event => change(field, event.target.value)}><option value="" aria-label="Seçin"></option>{values.map(value => <option key={value}>{value}</option>)}</select></label>)}
-            <div className={styles.searchActions}><button type="button" onClick={() => { setAddress({ ...emptyAddress, projectId: address.projectId }); setResult(null); catalogRequest.current++; setCatalogError(''); setCatalogLoading(false); }}>Sıfırla</button><button type="submit" disabled={!apartment || catalogLoading}>Axtar</button></div>
+            <SalesAddressFields rowClassName={styles.filterRow} address={address} building={loadedBuilding} loading={catalogLoading} error={catalogError} onChange={change} onFocus={focusField} />
+            <div className={styles.searchActions}><button type="button" onClick={() => { track({ type: 'reset' }); catalogController.current?.abort(); setAddress({ ...emptyAddress, projectId: address.projectId }); setResult(null); catalogRequest.current++; setCatalogError(''); setCatalogLoading(false); }}>Sıfırla</button><button type="submit" disabled={!apartment || catalogLoading}>Axtar</button></div>
           </form>
           {catalogLoading && <p className={styles.catalogNotice} role="status">Bina məlumatları yüklənir…</p>}
           {catalogError && <p className={styles.catalogNotice} role="alert">{catalogError} <button onClick={() => void loadBuilding(address.projectId, address.building)}>Yenidən yoxla</button></p>}
@@ -226,6 +260,7 @@ export default function SalesSimulator() {
       </div>}
       <div className={styles.navigation}><button className={styles.previous} onClick={back}><ChevronLeft size={15} />Əvvəlki</button>{(!searching || result) && <button className={styles.next} disabled={nextDisabled} onClick={next}>Növbəti<ChevronRight size={17} /></button>}</div>
     </main>}
+    {syncError && phase !== 'complete' && <div className={styles.syncNotice} role="status">{syncError} <button onClick={() => void flush()}>Yenidən saxla</button></div>}
     {phase === 'method' && <footer className={styles.footer}>{new Date().getFullYear()} © MİDA</footer>}
     {captchaOpen && run.plan[progress] && <div className={styles.modalBackdrop}><div ref={dialog} className={styles.dialog} role="dialog" aria-modal="true" aria-label="Təhlükəsizlik yoxlaması" onKeyDown={event => {
       if (event.key === 'Escape' && !busy.current) closeCaptcha();

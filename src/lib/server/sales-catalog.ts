@@ -6,16 +6,17 @@ type ReadJson = (path: string) => Promise<unknown>;
 interface Floor { id: number; floor_number: number; sector_floor_plan_id: number }
 interface Apartment { entrance_number: number | string; apartment_number: number | string; count_of_rooms: number; internal_size: number; external_size: number }
 const cache = new Map<string, { until: number; promise: Promise<CatalogBuilding> }>();
-const readJson: ReadJson = async path => {
-  const response = await fetch(base + path, { signal: AbortSignal.timeout(10000), next: { revalidate: 86400 } });
+async function officialJson(path: string, signal: AbortSignal): Promise<unknown> {
+  const response = await fetch(base + path, { signal, next: { revalidate: 86400 } });
   if (!response.ok) throw new Error('MIDA catalog unavailable');
   return response.json();
-};
+}
+const readJson: ReadJson = path => officialJson(path, AbortSignal.timeout(8000));
 /** Only allowlisted official sector IDs are fetched; this route accepts no upstream URL. */
-export async function fetchBuilding(projectId: string, number: string, read: ReadJson = readJson): Promise<CatalogBuilding> {
+export async function fetchBuilding(projectId: string, number: string, read: ReadJson = readJson, force = false): Promise<CatalogBuilding> {
   const source = projectFor(projectId)?.buildings.find(building => building.number === number);
   if (!source) throw new ApiError(404, 'Bina tapılmadı.');
-  if (source.complete) return source;
+  if (source.complete && !force) return source;
   const building: CatalogBuilding = { ...source, complete: true, layouts: [] };
   // The official floor-plan ID identifies repeated layouts within the same sector.
   for (const sector of source.sectors) {
@@ -43,7 +44,8 @@ export async function fetchBuilding(projectId: string, number: string, read: Rea
 export async function salesBuilding(projectId: string, number: string) {
   const key = `${projectId}/${number}`, existing = cache.get(key);
   if (existing && existing.until > Date.now()) return existing.promise;
-  const promise = fetchBuilding(projectId, number).catch(error => {
+  const deadline = AbortSignal.timeout(12000);
+  const promise = fetchBuilding(projectId, number, path => officialJson(path, AbortSignal.any([deadline, AbortSignal.timeout(8000)]))).catch(error => {
     cache.delete(key);
     if (error instanceof ApiError) throw error;
     throw new ApiError(503, 'Bina məlumatı hazırda yüklənmədi. Yenidən yoxlayın.');

@@ -1,3 +1,4 @@
+import { startSalesRun, appendSalesEvents, salesRunEvents, salesOverview, publicSalesSession } from '@/lib/server/sales-service';
 import { resolveCaptchaSettings } from '@/lib/captcha-config';
 import { salesBuilding } from '@/lib/server/sales-catalog';
 import { NextRequest, NextResponse } from 'next/server';
@@ -75,6 +76,13 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
     const identity = await getIdentity(request);
     if (route === 'auth/session' && method === 'GET') return json({ user: identity });
 
+    if (route === 'sales/runs' && method === 'POST') return json(await startSalesRun(identity, await readBody(request)), 201);
+    if (route === 'sales/overview' && method === 'GET') return json(await salesOverview(identity, emailAddress(request.nextUrl.searchParams.get('email'))));
+    if (path[0] === 'sales' && path[1] === 'runs' && path[3] === 'events' && path.length === 4) {
+      const id = documentId(path[2]);
+      if (method === 'POST') return json(await appendSalesEvents(identity, id, await readBody(request)));
+      if (method === 'GET') return json(wire(await salesRunEvents(identity, id, request.nextUrl.searchParams.get('cursor'))));
+    }
     if (path[0] === 'sales' && path[1] === 'catalog' && path.length === 4 && method === 'GET') return json({ building: await salesBuilding(path[2], path[3]) });
 
     if (route === 'aim/runs' && method === 'POST') return json(await startAimRun(identity, await readBody(request)), 201);
@@ -165,7 +173,7 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
           query = query.startAfter(doc);
         }
         const snapshot = await query.get();
-        return json({ sessions: snapshot.docs.map((doc) => kind === 'aim' ? wire(publicAimSession(doc)) : ({ ...wire(doc.data()) as object, id: doc.id })), lastDoc: snapshot.docs.at(-1)?.id || null });
+        return json({ sessions: snapshot.docs.map((doc) => kind === 'aim' ? wire(publicAimSession(doc)) : kind === 'sales' ? wire(publicSalesSession(doc)) : ({ ...wire(doc.data()) as object, id: doc.id })), lastDoc: snapshot.docs.at(-1)?.id || null });
       }
     }
     if (path[0] === 'captcha-settings' && path.length === 2) {
