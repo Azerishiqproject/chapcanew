@@ -3,8 +3,8 @@ import { adminServices } from './firebase-admin';
 import { ApiError, digest, text } from './security';
 import { requireAdmin, type Identity } from './session';
 import { applyTelemetry, bounded, endReason, initialAccumulator, runConfiguration, runSummary, type AimAccumulator } from './aim-telemetry';
-import { MAX_RUN_MS, type AimSettings } from '../aim-game';
-import { TRAINING_DURATION_MS, TRAINING_PROTOCOL, comparisonCondition, type TrainingEnvironment } from '../aim-training';
+import { MAX_RUN_MS, isProgressive, type AimSettings } from '../aim-game';
+import { TRAINING_DURATION_MS, TRAINING_PROTOCOL, REFERENCE_PROTOCOL, comparisonCondition, type TrainingEnvironment } from '../aim-training';
 import { compareTrainingCohorts, mergeTrainingRun, type TrainingCohort } from '../aim-comparison';
 import { record } from './security';
 
@@ -66,8 +66,8 @@ export async function appendAimEvents(identity: Identity, runId: string, input: 
     const settings = run.settings as AimSettings;
     const { state, events } = applyTelemetry(run.runtimeState as AimAccumulator, input.events, settings, throughMs);
     const reason = input.ended ? endReason(input.endReason) : null;
-    if (reason === 'practice-complete' && (!settings.training || throughMs !== TRAINING_DURATION_MS)) throw new ApiError(400, 'Antrenman süresi tamamlanmadı.');
-    if (settings.training && (throughMs > TRAINING_DURATION_MS || reason === 'lives' || reason === 'time-limit')) throw new ApiError(400, 'Geçersiz antrenman bitişi.');
+    if (reason === 'practice-complete' && (!isProgressive(settings) || throughMs !== TRAINING_DURATION_MS)) throw new ApiError(400, 'Antrenman süresi tamamlanmadı.');
+    if (isProgressive(settings) && (throughMs > TRAINING_DURATION_MS || reason === 'lives' || reason === 'time-limit')) throw new ApiError(400, 'Geçersiz antrenman bitişi.');
     if (reason === 'lives' && state.expired !== settings.lives) throw new ApiError(400, 'Can kaybı sayısı uyuşmuyor.');
     if (reason === 'time-limit' && throughMs < MAX_RUN_MS) throw new ApiError(400, 'Süre sınırına ulaşılmadı.');
     const status = !reason ? 'playing' : reason === 'lives' || reason === 'time-limit' || reason === 'practice-complete' ? 'completed' : 'aborted';
@@ -77,10 +77,10 @@ export async function appendAimEvents(identity: Identity, runId: string, input: 
     const comparable = !!environment && !state.environmentChanged && !!pointerMatches && state.hits + state.misses > 0;
     let cohortUpdate: { ref: ReturnType<typeof db.doc>; data: TrainingCohort } | null = null;
     if (settings.training && status === 'completed' && comparable && environment) {
-      const cohortRef = db.collection('aimComparison').doc(digest(`${identity.uid}:${run.comparisonCondition}:${TRAINING_PROTOCOL}`));
+      const cohortRef = db.collection('aimComparison').doc(digest(`${identity.uid}:${run.comparisonCondition}:${settings.training}`));
       const previous = (await transaction.get(cohortRef)).data() as TrainingCohort | undefined;
       cohortUpdate = { ref: cohortRef, data: mergeTrainingRun(previous || null, {
-        userId: identity.uid, name: identity.name, email: identity.email, protocol: TRAINING_PROTOCOL,
+        userId: identity.uid, name: identity.name, email: identity.email, protocol: settings.training,
         conditionKey: run.comparisonCondition, inputDevice: environment.inputDevice,
         arenaWidth: Math.round(environment.arenaWidth / 20) * 20, arenaHeight: Math.round(environment.arenaHeight / 20) * 20,
       }, { id: runId, atMs: Date.now(), maxLevel: state.progress.maxLevel, stages: state.stages }) };
@@ -97,11 +97,12 @@ export async function appendAimEvents(identity: Identity, runId: string, input: 
   });
   return { ok: true, nextBatchIndex: batchIndex + 1 };
 }
-export async function trainingComparison(identity: Identity, level: number, condition: string | null) {
+export async function trainingComparison(identity: Identity, level: number, condition: string | null, protocol: string = TRAINING_PROTOCOL) {
   requireAdmin(identity);
-  if (!Number.isInteger(level) || level < 1 || level > 5) throw new ApiError(400, 'Geçersiz kademe.');
+  if (![TRAINING_PROTOCOL, REFERENCE_PROTOCOL].includes(protocol)) throw new ApiError(400, 'Geçersiz karşılaştırma türü.');
+  if (!Number.isInteger(level) || level < 1 || level > (protocol === REFERENCE_PROTOCOL ? 3 : 5)) throw new ApiError(400, 'Geçersiz kademe.');
   const { db } = adminServices();
-  const snapshot = await db.collection('aimComparison').where('protocol', '==', TRAINING_PROTOCOL).get();
+  const snapshot = await db.collection('aimComparison').where('protocol', '==', protocol).get();
   const all = snapshot.docs.map((doc) => doc.data() as TrainingCohort);
   const ids = [...new Set(all.map((data) => data.userId))];
   const existing = ids.length ? await db.getAll(...ids.map((id) => db.collection('users').doc(id))) : [];
@@ -112,7 +113,7 @@ export async function trainingComparison(identity: Identity, level: number, cond
     inputDevice: cohorts.find((data) => data.conditionKey === key)!.inputDevice }));
   conditions.sort((a, b) => b.players - a.players || a.key.localeCompare(b.key));
   const selected = condition && keys.includes(condition) ? condition : conditions[0]?.key || null;
-  return { protocol: TRAINING_PROTOCOL, stage: level, condition: selected, conditions,
+  return { protocol, stage: level, condition: selected, conditions,
     ...compareTrainingCohorts(cohorts.filter((data) => data.conditionKey === selected), level) };
 }
 export async function aimRunEvents(identity: Identity, runId: string, cursor: string | null) {

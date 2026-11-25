@@ -74,7 +74,7 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
     if (route === 'auth/session' && method === 'GET') return json({ user: identity });
 
     if (route === 'aim/runs' && method === 'POST') return json(await startAimRun(identity, await readBody(request)), 201);
-    if (route === 'aim/comparison' && method === 'GET') return json(await trainingComparison(identity, Number(request.nextUrl.searchParams.get('stage') || 1), request.nextUrl.searchParams.get('condition')));
+    if (route === 'aim/comparison' && method === 'GET') return json(await trainingComparison(identity, Number(request.nextUrl.searchParams.get('stage') || 1), request.nextUrl.searchParams.get('condition'), request.nextUrl.searchParams.get('protocol') || undefined));
     if (route === 'aim/overview' && method === 'GET') {
       return json(await aimOverview(identity, emailAddress(request.nextUrl.searchParams.get('email'))));
     }

@@ -230,7 +230,7 @@ export default function AdminPage() {
         {/* Main Content */}
         <main className="max-w-7xl mx-auto w-full px-8 py-12 flex flex-col gap-10">
 
-          <div className="flex justify-end"><button onClick={() => router.push('/admin/aim')} className="rounded-xl border border-orange-400/20 bg-orange-400/10 px-5 py-3 text-sm font-semibold text-orange-200">Oyuncu karşılaştırması · Kademeli Aim</button></div>
+          <div className="flex justify-end"><button onClick={() => router.push('/admin/aim')} className="rounded-xl border border-orange-400/20 bg-orange-400/10 px-5 py-3 text-sm font-semibold text-orange-200">Oyuncu karşılaştırması · Direct Aim</button></div>
 
           {/* Dashboard Stats & Actions */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getAimEvents, type AimSession } from '@/lib/aimSessions';
+import { REFERENCE_PROTOCOL } from '@/lib/aim-training';
 import { type RecordedAimEvent } from '@/lib/aim-game';
 import { errorMessage } from '@/lib/api-client';
 
@@ -16,6 +17,8 @@ export function aimStatus(session: AimSession) {
   return session.endReason === 'time-limit' ? 'Süre sınırı' : 'Tamamlandı';
 }
 export default function AimSessionDetails({ session }: { session: AimSession & { id: string } }) {
+  const reference = session.trainingProtocol === REFERENCE_PROTOCOL;
+  const sectionCount = reference ? 3 : 5;
   const [events, setEvents] = useState<RecordedAimEvent[]>([]);
   const [loading, setLoading] = useState(session.schemaVersion === 2);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +46,7 @@ export default function AimSessionDetails({ session }: { session: AimSession & {
   return (
     <div className="space-y-6 border-t border-white/10 p-5 sm:p-7">
       {session.trainingStages && <section className="space-y-3" aria-label="Kademe gelişimi">
-        <div className="flex flex-wrap justify-between gap-2"><h4 className="font-semibold">Aynı oyun içindeki kademeler · En yüksek {session.maxLevel}/5</h4><p className="text-xs text-[#8ca6b8]">{session.environment?.inputDevice} · {session.environment?.arenaWidth.toFixed(0)}×{session.environment?.arenaHeight.toFixed(0)}</p></div>
+        <div className="flex flex-wrap justify-between gap-2"><h4 className="font-semibold">{reference ? 'Aynı oyundaki tempo bölümleri' : 'Aynı oyun içindeki kademeler'} · En yüksek {session.maxLevel}/{sectionCount}</h4><p className="text-xs text-[#8ca6b8]">{session.environment?.inputDevice} · {session.environment?.arenaWidth.toFixed(0)}×{session.environment?.arenaHeight.toFixed(0)}</p></div>
         <div className="overflow-x-auto rounded-xl border border-white/10"><table className="w-full whitespace-nowrap text-left text-xs tabular-nums"><thead className="bg-white/5 text-[#8fa4b5]"><tr>{['Kademe', 'Hedef', 'İsabet', 'Tıklama doğruluğu', 'Hedef yakalama', 'Orta erişim', 'Medyan', 'Tutarlılık (SS)', 'Merkez doğruluğu', 'Yol verimi'].map((label) => <th key={label} className="px-3 py-3 font-medium">{label}</th>)}</tr></thead><tbody>{session.trainingStages.filter((item) => item.targets > 0).map((item) => <tr key={item.level} className="border-t border-white/5"><td className="px-3 py-3">{item.level}</td><td className="px-3 py-3">{item.targets}</td><td className="px-3 py-3">{item.hits}</td><td className="px-3 py-3">{item.accuracy.toFixed(1)}%</td><td className="px-3 py-3">{item.hitRate.toFixed(1)}%</td><td className="px-3 py-3">{aimMs(item.averageResponseMs)}</td><td className="px-3 py-3">{aimMs(item.medianResponseMs)}</td><td className="px-3 py-3">{aimMs(item.deviationMs)}</td><td className="px-3 py-3">{item.centerAccuracy === null ? '—' : item.centerAccuracy.toFixed(1) + '%'}</td><td className="px-3 py-3">{item.pathEfficiency === null ? '—' : item.pathEfficiency.toFixed(1) + '%'}</td></tr>)}</tbody></table></div>
         <p className="text-[11px] leading-5 text-[#8ca6b8]">Erişim süresi hedefin görünmesinden isabete kadardır; görme ve mouse hareketini birlikte içerir. Yol verimi, oyun alanında 50 ms aralıkla örneklenen yolun doğrudan yola yakınlığıdır. Karşılaştırma tamamlanan oyunlar için yapılır.{session.comparable === false ? ' Bu kaydın ekran/giriş koşulları değişmiş veya giriş verisi eksiktir; karşılaştırmaya eklenmez.' : ''}</p>
       </section>}
@@ -53,11 +56,11 @@ export default function AimSessionDetails({ session }: { session: AimSession & {
           ['Dəqiqlik', `${session.accuracy.toFixed(1)}%`], ['Atış sayı', session.shotCount ?? session.score + session.misses], ['Ən uzun seri', session.bestStreak ?? '—'],
           [session.trainingProtocol ? 'Orta hedefe erişim' : 'Orta reaksiya', aimMs(session.averageReactionMs)], ['Ən sürətli', aimMs(session.fastestReactionMs)], ['Ən yavaş', aimMs(session.slowestReactionMs)],
           [session.trainingProtocol ? 'Erişim sapması' : 'Reaksiya sapması', aimMs(session.reactionDeviationMs)], ['Orta atış aralığı', aimMs(session.averageShotIntervalMs)], ['Orta isabet aralığı', aimMs(session.averageHitIntervalMs)],
-          ['İsabet / saniyə', session.hitsPerSecond?.toFixed(2) ?? '—'], ['Tıklama / saniyə', session.clicksPerSecond?.toFixed(2) ?? '—'], [session.trainingProtocol ? 'Son kademe' : 'Son hədəf sürəti', session.trainingProtocol ? `${session.level}/5` : session.finalSpeed?.toFixed(2) ?? '—'],
+          ['İsabet / saniyə', session.hitsPerSecond?.toFixed(2) ?? '—'], ['Tıklama / saniyə', session.clicksPerSecond?.toFixed(2) ?? '—'], [session.trainingProtocol ? reference ? 'Tempo bölümü' : 'Son kademe' : 'Son hədəf sürəti', session.trainingProtocol ? `${session.level}/${sectionCount}` : session.finalSpeed?.toFixed(2) ?? '—'],
           ['Yaranan hədəf', session.spawnedTargets ?? '—'], ['Tur müddəti', aimDuration(session.totalDuration)], ['Bitiş', aimStatus(session)],
         ].map(([label, value]) => <div key={String(label)} className="rounded-xl border border-white/5 bg-white/[0.035] p-3"><p className="text-[10px] leading-4 text-[#889dab]">{label}</p><p className="mt-1.5 break-words text-sm font-semibold tabular-nums text-white">{value}</p></div>)}
       </div>
-      {session.trainingProtocol ? <p className="text-xs leading-6 text-[#8ba1b1]">Kademeli antrenman · 3 dakika · 5 kademe · hatalarda tempo azalır · ayrı ölçüm turu yok</p> : session.settings && <p className="text-xs leading-6 text-[#8ba1b1]">Tur ayarları: {session.profile} · {session.settings.targetsPerSecond} hədəf/s · +{session.settings.acceleration}/s · {session.settings.lives} can · {session.settings.diameter}px · hədəf ömrü {session.settings.lifetimeMs} ms{session.settings.mode === 'moving-targets' ? ` · hərəkət ${session.settings.movementSpeed}px/s` : ''}</p>}
+      {session.trainingProtocol && !reference ? <p className="text-xs leading-6 text-[#8ba1b1]">Kademeli antrenman · 3 dakika · 5 kademe · hatalarda tempo azalır · ayrı ölçüm turu yok</p> : session.settings && <p className="text-xs leading-6 text-[#8ba1b1]">Tur ayarları: {session.profile} · {session.settings.targetsPerSecond} hədəf/s · +{session.settings.acceleration}/s · {session.settings.lives} can · {session.settings.diameter}px · hədəf ömrü {session.settings.lifetimeMs} ms{session.settings.mode === 'moving-targets' ? ` · hərəkət ${session.settings.movementSpeed}px/s` : ''}</p>}
       {session.schemaVersion !== 2 ? <p className="text-sm text-[#93a9ba]">Bu köhnə oturum üçün atış zamanları qeydə alınmayıb.</p> : loading ? <p className="py-8 text-sm text-[#93a9ba]" role="status">Bütün atış qeydləri yüklənir…</p> : error ? <p role="alert" className="text-sm text-red-300">{error}</p> : <>
         <div className="grid gap-4 lg:grid-cols-2">
           <figure className="rounded-2xl border border-white/10 bg-[#091b28] p-4">

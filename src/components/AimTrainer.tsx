@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Heart, Maximize, Play, RotateCcw, Settings2, Square, Target, Volume2, VolumeX, X } from 'lucide-react';
 import { api, errorMessage } from '@/lib/api-client';
-import { ARENA, AimGame, CHALLENGE, EASY, PROGRESSIVE, calculateMetrics, speedAt, targetPosition, targetRadius, targetOpacity, type AimMetrics, type AimSettings, type EndReason } from '@/lib/aim-game';
+import { ARENA, AimGame, CHALLENGE, EASY, DIRECT, PROGRESSIVE, calculateMetrics, speedAt, targetPosition, targetRadius, targetOpacity, type AimMetrics, type AimSettings, type EndReason } from '@/lib/aim-game';
 import { AimRecorder } from '@/lib/aim-recorder';
-import { TRAINING_DURATION_MS, TRAINING_STAGES, trainingStage, type InputDevice, type TrainingEnvironment } from '@/lib/aim-training';
+import { TRAINING_DURATION_MS, TRAINING_STAGES, REFERENCE_PHASES, referencePhaseAt, trainingStage, type InputDevice, type TrainingEnvironment } from '@/lib/aim-training';
 import { AimAudio, type AimSound } from '@/lib/aim-audio';
 import { useAppSelector } from '@/store/hooks';
 
-type Profile = 'progressive' | 'easy' | 'challenge' | 'custom' | 'doubleshot' | 'moving';
+type Profile = 'direct' | 'progressive' | 'easy' | 'challenge' | 'custom' | 'doubleshot' | 'moving';
 type Phase = 'idle' | 'starting' | 'playing' | 'finished';
 const formatTime = (ms: number) => { const ticks = Math.round(ms / 100); return `${String(Math.floor(ticks / 600)).padStart(2, '0')}:${String(Math.floor(ticks / 10) % 60).padStart(2, '0')}.${ticks % 10}`; };
 const milliseconds = (value: number | null | undefined) => value == null ? '—' : `${value.toFixed(0)} ms`;
@@ -41,7 +41,7 @@ function paint(canvas: HTMLCanvasElement, game: AimGame | null) {
 export default function AimTrainer() {
   const user = useAppSelector((state) => state.auth.user);
   const userId = user?.uid;
-  const [profile, setProfile] = useState<Profile>('progressive');
+  const [profile, setProfile] = useState<Profile>('direct');
   const [inputDevice, setInputDevice] = useState<InputDevice>('mouse');
   const [trainingHud, setTrainingHud] = useState({ level: 1, maxLevel: 1, hits: 0, resolved: 0, targetCount: 0 });
   const lastCanvasSize = useRef<{ width: number; height: number } | null>(null);
@@ -162,7 +162,7 @@ export default function AimTrainer() {
   async function start() {
     if (!user || starting.current || recovering || saveState === 'error' || saveState === 'saving') return;
     starting.current = true; setPhase('starting'); setError(null); setSettingsOpen(false);
-    const settings: AimSettings = profile === 'progressive' ? { ...PROGRESSIVE } : profile === 'easy' ? { ...EASY } : profile === 'challenge' ? { ...CHALLENGE } : {
+    const settings: AimSettings = profile === 'direct' ? { ...DIRECT } : profile === 'progressive' ? { ...PROGRESSIVE } : profile === 'easy' ? { ...EASY } : profile === 'challenge' ? { ...CHALLENGE } : {
       ...custom, mode: profile === 'doubleshot' ? 'dual-targets' : profile === 'moving' ? 'moving-targets' : 'normal',
     };
     if (soundPrefs.current.enabled) {
@@ -228,21 +228,34 @@ export default function AimTrainer() {
     if (game.lostLives > previousLost) playSound('expire');
     if (game.ended) finish();
   }
-  const currentSettings = gameRef.current?.settings || (profile === 'progressive' ? PROGRESSIVE : profile === 'easy' ? EASY : profile === 'challenge' ? CHALLENGE : custom);
+  const currentSettings = gameRef.current?.settings || (profile === 'direct' ? DIRECT : profile === 'progressive' ? PROGRESSIVE : profile === 'easy' ? EASY : profile === 'challenge' ? CHALLENGE : custom);
   const busy = phase === 'playing' || phase === 'starting';
   const progressive = profile === 'progressive';
+  const direct = profile === 'direct';
+  const tempo = referencePhaseAt(hud.elapsed);
+  function selectProfile(value: Profile) {
+    setProfile(value); setPhase('idle'); setResult(null);
+    setHud({ elapsed: 0, hits: 0, misses: 0, lost: 0, speed: value === 'direct' ? DIRECT.targetsPerSecond : value === 'easy' ? EASY.targetsPerSecond : CHALLENGE.targetsPerSecond });
+    setTrainingHud({ level: 1, maxLevel: 1, hits: 0, resolved: 0, targetCount: 0 });
+    gameRef.current = null;
+    if (canvasRef.current) paint(canvasRef.current, null);
+  }
   const stage = trainingStage(trainingHud.level);
   return (
     <section className="w-full text-[#e9f1f7]" aria-label="Direct Aim antrenmanı">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div><p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#839bad]">Hız · Dəqiqlik · Reaksiya</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">Direct Aim<span className="ml-3 text-[#fb713f]">/</span></h2></div>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="rounded-full border border-white/10 bg-[#102839] px-4 py-2 text-xs text-[#b1c5d4]">{progressive ? '3 dakika · 5 kademe · tek oyun' : 'Serbest antrenman'}</span>
+          <span className="rounded-full border border-white/10 bg-[#102839] px-4 py-2 text-xs text-[#b1c5d4]">{direct ? 'Kesintisiz akış · 3 can' : progressive ? '3 dakika · 5 kademe · tek oyun' : 'Serbest antrenman'}</span>
           <label className="flex items-center gap-2 text-xs text-[#94acbd]">Aygıt
             <select aria-label="Giriş aygıtı" value={inputDevice} disabled={busy} onChange={(event) => setInputDevice(event.target.value as InputDevice)} className="rounded-lg border border-white/10 bg-[#102839] px-3 py-2 text-white disabled:opacity-50"><option value="mouse">Mouse</option><option value="touchpad">Touchpad</option><option value="touch">Dokunmatik</option></select>
           </label>
         </div>
       </div>
+      <nav aria-label="Oyun türü" className="mx-auto mb-5 flex max-w-[800px] flex-wrap gap-2">{([
+        ['direct', 'Direct Aim'], ['easy', 'Easy'], ['custom', 'Custom'], ['doubleshot', 'Doubleshot'], ['moving', 'Moving Targets'],
+      ] as const).map(([value, label]) => <button key={value} disabled={busy} aria-pressed={profile === value} onClick={() => selectProfile(value)} className={`rounded-xl border px-4 py-2.5 text-sm transition disabled:opacity-50 ${profile === value ? 'border-[#fb713f]/60 bg-[#fb713f]/15 text-orange-200' : 'border-white/10 bg-white/5 text-[#91a7b8] hover:bg-white/10'}`}>{label}</button>)}</nav>
+      {direct && <div className="mx-auto mb-4 flex max-w-[800px] flex-wrap items-center justify-between gap-2 text-xs text-[#8ca6b8]" data-testid="aim-tempo"><span>Hız kesintisiz artar · +0.01 hedef/sn²</span><div className="flex gap-4">{REFERENCE_PHASES.map((item) => <span key={item.level} aria-current={tempo === item.level ? 'step' : undefined} className={tempo === item.level ? 'font-semibold text-orange-300' : ''}>{item.name}</span>)}</div></div>}
       {progressive && <div className="mx-auto mb-5 max-w-[800px] rounded-2xl border border-white/10 bg-[#0d2433] p-4" data-testid="training-progress">
         <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold">Kademe {trainingHud.level}/5 · {stage.name}</p><p className="text-xs text-[#a4bbcb]">En fazla {stage.maxTargets} hedef · {stage.gapMs / 1000}–{(stage.gapMs + 400) / 1000} sn aralık</p></div>
         <div className="mt-3 grid grid-cols-5 gap-2">{TRAINING_STAGES.map((item) => <div key={item.level} className={`h-1.5 rounded-full ${item.level <= trainingHud.level ? 'bg-[#fb713f]' : 'bg-white/10'}`} />)}</div>
@@ -270,8 +283,8 @@ export default function AimTrainer() {
           {(phase === 'idle' || phase === 'starting') && (
             <div className="absolute inset-0 flex flex-col items-center justify-center px-5 text-center">
               <Target className="mb-5 text-[#fb713f]" size={46} strokeWidth={1.3} />
-              <h3 className="text-2xl font-semibold">{profile === 'progressive' ? 'Kademe kademe geliş' : profile === 'easy' ? 'Easy Challenge' : profile === 'challenge' ? 'Challenge' : profile === 'custom' ? 'Custom Challenge' : profile === 'doubleshot' ? 'Doubleshot' : 'Moving Targets'}</h3>
-              <p className="mt-3 max-w-sm text-sm leading-6 text-[#8ca2b3]">{progressive ? 'Tek ve büyük hedefle başla. Başarılı oldukça aynı oyun içinde tempo ve hedef sayısı artar. Hata yaptığında oyun bitmez; tempo sana uyum sağlar.' : 'Görünən hədəfləri vurun. Hər qaçırılan hədəf bir can aparır. Boş tıklamalar dəqiqliyi azaldır.'}</p>
+              <h3 className="text-2xl font-semibold">{direct ? 'Challenge' : profile === 'progressive' ? 'Kademe kademe geliş' : profile === 'easy' ? 'Easy Challenge' : profile === 'challenge' ? 'Challenge' : profile === 'custom' ? 'Custom Challenge' : profile === 'doubleshot' ? 'Doubleshot' : 'Moving Targets'}</h3>
+              <p className="mt-3 max-w-sm text-sm leading-6 text-[#8ca2b3]">{direct ? 'Görünən hədəfləri vur. Hədəflər fasiləsiz yaranır, sürət yavaş-yavaş artır. Qaçan hər hədəf bir can aparır; 3 canın var.' : progressive ? 'Tek ve büyük hedefle başla. Başarılı oldukça aynı oyun içinde tempo ve hedef sayısı artar. Hata yaptığında oyun bitmez; tempo sana uyum sağlar.' : 'Görünən hədəfləri vurun. Hər qaçırılan hədəf bir can aparır. Boş tıklamalar dəqiqliyi azaldır.'}</p>
               <button onClick={() => void start()} disabled={phase === 'starting' || recovering || saveState === 'error' || saveState === 'saving'} className="mt-7 inline-flex min-w-56 items-center justify-center gap-3 rounded-full border-4 border-[#ff9c7140] bg-[#f66c39] px-10 py-4 text-lg font-bold shadow-[0_8px_32px_#f66c3920] transition hover:bg-[#ff7c49] disabled:opacity-50"><Play size={19} fill="currentColor" />{recovering ? 'Kayıt yoxlanır…' : phase === 'starting' ? 'Hazırlanır…' : 'PLAY'}</button>
             </div>
           )}
@@ -282,7 +295,7 @@ export default function AimTrainer() {
               <div className="mt-6 grid w-full max-w-lg grid-cols-3 gap-x-5 gap-y-5">
                 {[
                   ['İsabet', String(result.score)], ['Dəqiqlik', `${result.accuracy.toFixed(1)}%`], ['Vaxt', formatTime(hud.elapsed)],
-                  [progressive ? 'Hedefe erişim' : 'Orta reaksiya', milliseconds(result.averageReactionMs)], ['Atış aralığı', milliseconds(result.averageShotIntervalMs)], [progressive ? 'Ulaşılan kademe' : 'Vuruş / saniyə', progressive ? `${trainingHud.maxLevel}/5` : result.hitsPerSecond.toFixed(2)],
+                  [progressive || direct ? 'Hedefe erişim' : 'Orta reaksiya', milliseconds(result.averageReactionMs)], ['Atış aralığı', milliseconds(result.averageShotIntervalMs)], [progressive ? 'Ulaşılan kademe' : 'Vuruş / saniyə', progressive ? `${trainingHud.maxLevel}/5` : result.hitsPerSecond.toFixed(2)],
                 ].map(([label, value]) => <div key={label}><p className="text-[11px] text-[#8ea4b5]">{label}</p><p className="mt-1 text-xl font-semibold tabular-nums text-white">{value}</p></div>)}
               </div>
               <button onClick={() => void start()} disabled={saveState !== 'saved'} className="mt-7 inline-flex items-center gap-3 rounded-full bg-[#f66c39] px-8 py-3.5 font-bold transition hover:bg-[#ff7c49] disabled:opacity-40"><RotateCcw size={18} />PLAY AGAIN</button>
@@ -293,7 +306,7 @@ export default function AimTrainer() {
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#04101b]/90 p-5" role="dialog" aria-modal="true" aria-label="Oyun ayarları">
               <div className="max-h-full w-full max-w-md overflow-auto rounded-2xl border border-white/10 bg-[#102839] p-6 text-left">
                 <div className="mb-5 flex items-center justify-between"><h3 className="text-lg font-semibold">Oyun ayarları</h3><button aria-label="Ayarları bağla" onClick={() => setSettingsOpen(false)}><X size={20} /></button></div>
-                <label className="mb-5 flex items-center justify-between gap-3 text-sm">Antrenman modu<select aria-label="Antrenman modu" value={profile} onChange={(event) => { setProfile(event.target.value as Profile); setPhase('idle'); setResult(null); setTrainingHud({level:1,maxLevel:1,hits:0,resolved:0,targetCount:0}); }} className="max-w-52 rounded-lg border border-white/10 bg-[#081a28] p-2"><option value="progressive">Kademeli antrenman</option><option value="easy">Easy</option><option value="challenge">Challenge</option><option value="custom">Custom</option><option value="doubleshot">Doubleshot</option><option value="moving">Moving Targets</option></select></label>
+                <label className="mb-5 flex items-center justify-between gap-3 text-sm">Antrenman modu<select aria-label="Antrenman modu" value={profile} onChange={(event) => selectProfile(event.target.value as Profile)} className="max-w-52 rounded-lg border border-white/10 bg-[#081a28] p-2"><option value="direct">Direct Aim · Referans tempo</option><option value="easy">Easy</option><option value="challenge">Challenge</option><option value="custom">Custom</option><option value="doubleshot">Doubleshot</option><option value="moving">Moving Targets</option></select></label>
                 <fieldset className="mb-6 space-y-3 border-b border-white/10 pb-5">
                   <legend className="mb-3 text-sm font-semibold">Səs ayarları</legend>
                   <label className="flex items-center justify-between text-sm">Səslər açıq<input type="checkbox" checked={sound} onChange={toggleSound} /></label>
@@ -302,7 +315,7 @@ export default function AimTrainer() {
                   <button type="button" onClick={() => { playSound('hit'); }} disabled={!sound || !effects.hit} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40">Səsi yoxla</button>
                 </fieldset>
                 <label className="mb-5 flex items-center justify-between text-sm">Nişangah<select value={crosshair} onChange={(event) => setCrosshair(event.target.value as typeof crosshair)} className="rounded-lg border border-white/10 bg-[#081a28] p-2"><option value="crosshair">Çarpaz</option><option value="default">Standart</option></select></label>
-                {profile === 'progressive' ? <p className="text-sm leading-6 text-[#a2b4c1]">İlk iki kademe tek hedefle ilerler. Kademe 3–4 en fazla 2, kademe 5 en fazla 3 hedef içerir. Karşılaştırma için aygıtını doğru seç ve oyun alanını tur sırasında değiştirme.</p> : profile === 'easy' || profile === 'challenge' ? <p className="text-sm leading-6 text-[#a2b4c1]">{profile === 'easy' ? 'Easy: 2 hədəf/s, saniyədə +0.003 hədəf/s, 5 can.' : 'Challenge: 2 hədəf/s, saniyədə +0.01 hədəf/s, 3 can.'} Sürəti dəyişmək üçün Custom rejimini seçin.</p> : <div className="space-y-4">{([
+                {direct ? <p className="text-sm leading-6 text-[#a2b4c1]">Videodaki akış: 2 hedef/sn başlangıç, saniyede +0.01 hedef/sn, 3 can. Hedefler yaklaşık 4 saniyede büyüyüp küçülür. Yeni hedef için isabet beklenmez; orta tempodan geçerek hızlanır.</p> : profile === 'progressive' ? <p className="text-sm leading-6 text-[#a2b4c1]">İlk iki kademe tek hedefle ilerler. Kademe 3–4 en fazla 2, kademe 5 en fazla 3 hedef içerir. Karşılaştırma için aygıtını doğru seç ve oyun alanını tur sırasında değiştirme.</p> : profile === 'easy' || profile === 'challenge' ? <p className="text-sm leading-6 text-[#a2b4c1]">{profile === 'easy' ? 'Easy: 2 hədəf/s, saniyədə +0.003 hədəf/s, 5 can.' : 'Challenge: 2 hədəf/s, saniyədə +0.01 hədəf/s, 3 can.'} Sürəti dəyişmək üçün Custom rejimini seçin.</p> : <div className="space-y-4">{([
                   ['targetsPerSecond', 'Hədəf / saniyə', 0.5, 10, 0.1], ['acceleration', 'Saniyəlik sürət artımı', 0, 0.5, 0.001], ['lives', 'Can sayı', 1, 10, 1], ['diameter', 'Hədəf ölçüsü', 30, 100, 5],
                   ...(profile === 'moving' ? [['movementSpeed', 'Hərəkət sürəti', 20, 200, 10] as const] : []),
                 ] as const).map(([key, label, min, max, step]) => <label key={key} className="flex items-center justify-between gap-4 text-sm">{label}<input type="number" min={min} max={max} step={step} value={custom[key]} onChange={(event) => setCustom({ ...custom, [key]: Number(event.target.value) })} className="w-24 rounded-lg border border-white/10 bg-[#081a28] p-2 text-right" /></label>)}</div>}

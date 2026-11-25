@@ -7,8 +7,9 @@ import { GET, POST, PATCH, DELETE, PUT } from '../src/app/api/[...path]/route';
 import { adminServices } from '../src/lib/server/firebase-admin';
 import { ADMIN_COOKIE, USER_COOKIE } from '../src/lib/server/session';
 import { digest } from '../src/lib/server/security';
+import { simulatedDirect } from './helpers/aim-direct';
 import { simulatedTraining } from './helpers/aim-training';
-import { TRAINING_DURATION_MS } from '../src/lib/aim-training';
+import { REFERENCE_PROTOCOL, TRAINING_DURATION_MS } from '../src/lib/aim-training';
 import { AimGame, CHALLENGE, targetPosition } from '../src/lib/aim-game';
 
 const project = 'demo-chapca-auth';
@@ -220,6 +221,32 @@ test('the same progressive game writes stage comparisons privately and separates
   const after = await call('aim/comparison?stage=1&condition=mouse%3A800x480', 'GET', undefined, adminCookie);
   assert.equal(after.data.rows.find((row: { email: string }) => row.email === 'student@example.com').completedPlays, 1, 'resized games are not mixed with stable-condition games');
   assert.equal((await call('aim/comparison', 'GET', undefined, studentCookie)).response.status, 403);
+});
+test('restored video-tempo games keep all admin metrics and compare separately from the old progressive games', async () => {
+  const { db } = adminServices();
+  const cookie = cookieFrom((await call('auth/login', 'POST', { email: 'student@example.com', password })).response, USER_COOKIE);
+  const other = cookieFrom((await call('auth/login', 'POST', { email: 'isolated@example.com', password })).response, USER_COOKIE);
+  for (const [index, playerCookie] of [cookie, other].entries()) {
+    const game = simulatedDirect(100000, index ? 1000 : 700);
+    const start = await call('aim/runs', 'POST', { clientRunId: `video-tempo-player-${index}`, profile: 'direct', environment: { inputDevice: 'mouse', arenaWidth: 800, arenaHeight: 480, devicePixelRatio: 1 } }, playerCookie);
+    assert.equal(start.response.status, 201);
+    await db.collection('aimSessions').doc(start.data.id).update({ startTime: Timestamp.fromMillis(Date.now() - game.elapsedMs) });
+    for (let at = 0, batchIndex = 0; at < game.events.length; at += 100, batchIndex++) {
+      const events = game.events.slice(at, at + 100), last = at + 100 >= game.events.length;
+      const body = { batchIndex, events, throughMs: last ? game.elapsedMs : events.at(-1)!.atMs, ended: last, ...(last ? { endReason: 'lives' } : {}) };
+      const saved = await call(`aim/runs/${start.data.id}/events`, 'POST', body, playerCookie);
+      assert.equal(saved.response.status, 200, JSON.stringify(saved.data));
+      if (last) assert.equal((await call(`aim/runs/${start.data.id}/events`, 'POST', body, playerCookie)).response.status, 200);
+    }
+  }
+  const result = await call(`aim/comparison?stage=2&protocol=${REFERENCE_PROTOCOL}`, 'GET', undefined, adminCookie);
+  assert.equal(result.response.status, 200); assert.equal(result.data.protocol, REFERENCE_PROTOCOL);
+  assert.equal(result.data.rows.length, 2); assert.ok(result.data.groupMedianResponseMs > 600);
+  assert.ok(result.data.rows.every((row: { completedPlays: number; maxLevel: number; pathEfficiency: number }) => row.completedPlays === 1 && row.maxLevel === 3 && row.pathEfficiency > 0));
+  assert.equal((await call(`aim/comparison?stage=5&protocol=${REFERENCE_PROTOCOL}`, 'GET', undefined, adminCookie)).response.status, 400);
+  assert.equal((await call('aim/comparison?protocol=unknown', 'GET', undefined, adminCookie)).response.status, 400);
+  const legacy = await call('aim/comparison?stage=1', 'GET', undefined, adminCookie);
+  assert.equal(legacy.data.rows.length, 2); assert.equal(legacy.data.rows[0].completedPlays, 1);
 });
 test('pinned admin UID rejects other Auth accounts and server limits repeated login attempts', async () => {
   const { auth } = adminServices();

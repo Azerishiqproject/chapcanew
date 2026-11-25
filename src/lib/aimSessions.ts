@@ -34,8 +34,8 @@ export interface TrainingComparison {
   conditions: { key: string; players: number; inputDevice: string }[];
   groupMedianResponseMs: number | null; rows: TrainingComparisonRow[];
 }
-export async function getTrainingComparison(stage = 1, condition = '') {
-  return api<TrainingComparison>(`aim/comparison?${new URLSearchParams({ stage: String(stage), ...(condition ? { condition } : {}) })}`);
+export async function getTrainingComparison(stage = 1, condition = '', protocol = 'reference-video-v1') {
+  return api<TrainingComparison>(`aim/comparison?${new URLSearchParams({ stage: String(stage), protocol, ...(condition ? { condition } : {}) })}`);
 }
 
 export interface AimOverview {

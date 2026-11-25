@@ -1,4 +1,4 @@
-import { TRAINING_PROTOCOL, emptyStageStats, median, stageMetrics, type InputDevice, type TrainingStageStats } from './aim-training';
+import { emptyStageStats, median, stageMetrics, type InputDevice, type TrainingStageStats } from './aim-training';
 
 export interface TrainingRunSnapshot { id: string; atMs: number; maxLevel: number; stages: TrainingStageStats[] }
 export interface TrainingCohort {
@@ -14,7 +14,7 @@ function mergeStage(left: TrainingStageStats, right: TrainingStageStats, keepSam
     pathSamples: left.pathSamples + right.pathSamples, responseSamples: keepSamples ? [...left.responseSamples, ...right.responseSamples] : [] };
 }
 export function mergeTrainingRun(previous: TrainingCohort | null, metadata: Omit<TrainingCohort, 'totals' | 'baseline' | 'recent' | 'completedPlays' | 'maxLevel'>, run: TrainingRunSnapshot): TrainingCohort {
-  return { ...metadata, protocol: TRAINING_PROTOCOL, completedPlays: (previous?.completedPlays || 0) + 1,
+  return { ...metadata, completedPlays: (previous?.completedPlays || 0) + 1,
     maxLevel: Math.max(previous?.maxLevel || 1, run.maxLevel),
     totals: [1, 2, 3, 4, 5].map((level) => mergeStage(previous?.totals[level - 1] || emptyStageStats(level), run.stages[level - 1])),
     baseline: previous?.baseline.length === 3 ? previous.baseline : [...(previous?.baseline || []), run],

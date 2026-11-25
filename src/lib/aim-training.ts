@@ -1,4 +1,12 @@
 export const TRAINING_PROTOCOL = 'progressive-v1';
+export const REFERENCE_PROTOCOL = 'reference-video-v1';
+// Labels describe a continuous rate; changing sections never resets spawning.
+export const REFERENCE_PHASES = [
+  { level: 1, name: 'Başlangıç', fromMs: 0 },
+  { level: 2, name: 'Orta tempo', fromMs: 30000 },
+  { level: 3, name: 'Yüksek tempo', fromMs: 90000 },
+] as const;
+export const referencePhaseAt = (atMs: number) => atMs < 30000 ? 1 : atMs < 90000 ? 2 : 3;
 export const TRAINING_DURATION_MS = 180000;
 export const TRAINING_STAGES = [
   { level: 1, name: 'Alışma', gapMs: 1600, diameter: 88, lifetimeMs: 4500, maxTargets: 1 },
