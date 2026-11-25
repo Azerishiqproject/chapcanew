@@ -133,3 +133,6 @@
 }
 .catalogNotice { font-size: 12px; padding: 8px; background: white; margin: 8px 0 0; }
 .catalogNotice button { text-decoration: underline; background: none; border: 0; color: #268665; }
+
+.captchaProgress { background: white; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; font-weight: bold; color: #247a58; }
+.loading a { display: block; margin-top: 16px; text-align: center; color: #247a58; text-decoration: underline; }

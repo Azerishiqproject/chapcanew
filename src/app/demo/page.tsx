@@ -2,22 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { logoutUser } from '@/store/slices/authSlice';
-import {
-  setAllowedTypes,
-  setRequiredCount,
-  updateDateConfig,
-  updatePersonalConfig,
-  setCaptchaEnabled,
-  setCaptchaSettings,
-  CaptchaType
-} from '@/store/slices/captchaSlice';
-import {
-  getUserCaptchaSettings,
-  saveUserCaptchaSettings,
-} from '@/lib/captchaSettings';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { useAppSelector } from '@/store/hooks';
+import CaptchaSettingsPanel, { type SettingsStatus } from '@/components/CaptchaSettingsPanel';
 import {
   LogOut,
   RefreshCw,
@@ -29,11 +15,6 @@ import {
   HelpCircle,
   PlayCircle,
   FileText,
-  Settings,
-  ShieldCheck,
-  Calendar,
-  Layers,
-  ChevronRight
 } from 'lucide-react';
 
 // --- Types ---
@@ -216,293 +197,12 @@ const InstructionRow: React.FC<{ label: string }> = ({ label }) => (
   </div>
 );
 
-const CaptchaSettings: React.FC = () => {
-  const dispatch = useAppDispatch();
-  const captchaStore = useAppSelector((state) => state.captcha);
-  const user = useAppSelector((state) => state.auth.user);
-
-  // Local state for form inputs
-  const [localTypes, setLocalTypes] = useState<CaptchaType[]>(captchaStore.allowedTypes);
-  const [localCount, setLocalCount] = useState<number>(captchaStore.requiredCount);
-  const [localToday, setLocalToday] = useState<string>(captchaStore.dateConfig.todayDate);
-  const [localBirth, setLocalBirth] = useState<string>(captchaStore.dateConfig.birthDate);
-  const [localFin, setLocalFin] = useState<string>(captchaStore.personalConfig.fin);
-  const [localReligion, setLocalReligion] = useState<string>(captchaStore.personalConfig.religion);
-  const [localFavoriteCar, setLocalFavoriteCar] = useState<string>(captchaStore.personalConfig.favoriteCar);
-  const [localEnabled, setLocalEnabled] = useState<boolean>(captchaStore.enabled);
-  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [settingsError, setSettingsError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!user?.uid) return;
-
-    let cancelled = false;
-    setIsLoadingSettings(true);
-    getUserCaptchaSettings(user.uid).then(({ settings, error }) => {
-      if (cancelled) return;
-      if (settings) dispatch(setCaptchaSettings(settings));
-      setSettingsError(error);
-      setIsLoadingSettings(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [dispatch, user?.uid]);
-
-  // Keep local state in sync if store changes elsewhere (optional but good)
-  useEffect(() => {
-    setLocalTypes(captchaStore.allowedTypes);
-    setLocalCount(captchaStore.requiredCount);
-    setLocalToday(captchaStore.dateConfig.todayDate);
-    setLocalBirth(captchaStore.dateConfig.birthDate);
-    setLocalFin(captchaStore.personalConfig.fin);
-    setLocalReligion(captchaStore.personalConfig.religion);
-    setLocalFavoriteCar(captchaStore.personalConfig.favoriteCar);
-    setLocalEnabled(captchaStore.enabled);
-  }, [captchaStore]);
-
-  const toggleType = (type: CaptchaType) => {
-    if (localTypes.includes(type)) {
-      if (localTypes.length === 1) return;
-      setLocalTypes(localTypes.filter(t => t !== type));
-    } else {
-      setLocalTypes([...localTypes, type]);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!user?.uid) {
-      setSettingsError('İstifadəçi məlumatı tapılmadı');
-      return;
-    }
-
-    if (localTypes.includes('fin') && localFin.length !== 7) {
-      setSettingsError('FİN kodu tam 7 hərf və ya rəqəmdən ibarət olmalıdır');
-      return;
-    }
-
-    setIsSaving(true);
-    setSettingsError(null);
-
-    const settings = {
-      allowedTypes: localTypes,
-      requiredCount: localCount,
-      dateConfig: { todayDate: localToday, birthDate: localBirth },
-      personalConfig: {
-        fin: localFin,
-        religion: localReligion.trim(),
-        favoriteCar: localFavoriteCar.trim(),
-      },
-      enabled: localEnabled,
-    };
-    const { error } = await saveUserCaptchaSettings(user.uid, settings);
-
-    if (error) {
-      setSettingsError(error);
-      setIsSaving(false);
-      return;
-    }
-
-    dispatch(setAllowedTypes(settings.allowedTypes));
-    dispatch(setRequiredCount(settings.requiredCount));
-    dispatch(updateDateConfig(settings.dateConfig));
-    dispatch(updatePersonalConfig(settings.personalConfig));
-    dispatch(setCaptchaEnabled(settings.enabled));
-    setIsSaving(false);
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
-  };
-
-  return (
-    <div className="bg-white rounded-sm shadow-sm border border-gray-100 overflow-hidden mt-8">
-      <div className="p-6 border-b border-gray-50 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-[#00965e]/10 rounded-sm">
-            <Settings size={20} className="text-[#00965e]" />
-          </div>
-          <h2 className="text-lg font-bold text-gray-800">Captcha Tənzimləmələri</h2>
-        </div>
-
-        {showSuccess && (
-          <div className="flex items-center gap-2 text-[#00965e] animate-in fade-in slide-in-from-right-4 duration-300">
-            <div className="w-5 h-5 bg-[#00965e] rounded-full flex items-center justify-center">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-            </div>
-            <span className="text-sm font-bold tracking-tight">Ayarlar yadda saxlanıldı</span>
-          </div>
-        )}
-      </div>
-
-      <div className="p-8">
-        {/* Master Toggle */}
-        <div className="flex items-center justify-between bg-gray-50 border border-gray-100 p-4 rounded-sm mb-8">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${localEnabled ? 'bg-[#00965e]/10 text-[#00965e]' : 'bg-gray-200 text-gray-400'}`}>
-              <ShieldCheck size={20} />
-            </div>
-            <div>
-              <h3 className="text-[15px] font-bold text-gray-800">Captcha Sistemi</h3>
-              <p className="text-xs text-gray-500">Sistem aktiv olduqda təhlükəsizlik yoxlamaları aktivləşəcək.</p>
-            </div>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" checked={localEnabled} onChange={(e) => setLocalEnabled(e.target.checked)} className="sr-only peer" />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#00965e]"></div>
-          </label>
-        </div>
-
-        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 transition-opacity duration-300 ${localEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-          {/* Step 1: Types */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-2 mb-2">
-              <ShieldCheck size={18} className="text-[#00965e]" />
-              <h3 className="text-[15px] font-bold text-gray-700 uppercase tracking-wider">Captcha Növləri</h3>
-            </div>
-            <div className="grid grid-cols-1 gap-3">
-              {[
-                { id: 'date' as CaptchaType, label: 'Tarix Captcha' },
-                { id: 'number' as CaptchaType, label: 'Rəqəm Captcha' },
-                { id: 'text' as CaptchaType, label: 'Mətn Captcha' },
-                { id: 'birthdate' as CaptchaType, label: 'Doğum Tarixi Captcha' },
-                { id: 'fin' as CaptchaType, label: 'FİN / İdentifikasiya Captcha' },
-                { id: 'religion' as CaptchaType, label: 'Din Captcha' },
-                { id: 'favoriteCar' as CaptchaType, label: 'Sevimli Maşın Captcha' }
-              ].map(item => (
-                <label key={item.id} className="flex items-center gap-3 p-3 border border-gray-100 rounded-sm cursor-pointer hover:bg-gray-50 transition-colors group">
-                  <input
-                    type="checkbox"
-                    checked={localTypes.includes(item.id)}
-                    onChange={() => toggleType(item.id)}
-                    className="w-4 h-4 accent-[#00965e]"
-                  />
-                  <span className={`text-sm font-medium transition-colors ${localTypes.includes(item.id) ? 'text-gray-900' : 'text-gray-400'}`}>
-                    {item.label}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Step 2: Count */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-2 mb-2">
-              <Layers size={18} className="text-[#00965e]" />
-              <h3 className="text-[15px] font-bold text-gray-700 uppercase tracking-wider">Sequential Sayı</h3>
-            </div>
-            <p className="text-xs text-gray-400 leading-relaxed">Ardı-arda həll edilməli olan captcha sayını təyin edin.</p>
-            <div className="flex items-center gap-4 pt-2">
-              <input
-                type="range"
-                min="1"
-                max="5"
-                value={localCount}
-                onChange={(e) => setLocalCount(parseInt(e.target.value))}
-                className="flex-grow accent-[#00965e]"
-              />
-              <span className="w-10 h-10 bg-[#00965e] text-white rounded-full flex items-center justify-center font-bold text-lg shadow-sm">
-                {localCount}
-              </span>
-            </div>
-          </div>
-
-          {/* Step 3: Specific Config */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-2 mb-2">
-              <Calendar size={18} className="text-[#00965e]" />
-              <h3 className="text-[15px] font-bold text-gray-700 uppercase tracking-wider">Tarix Ayarları</h3>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Bugünkü Tarix (Tarix Captcha)</label>
-                <input
-                  type="text"
-                  placeholder="DD/MM/YYYY"
-                  value={localToday}
-                  onChange={(e) => setLocalToday(e.target.value)}
-                  className="w-full p-2.5 border border-gray-200 rounded-sm text-sm focus:ring-1 focus:ring-[#00965e] focus:border-[#00965e] outline-none transition-all font-mono"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Doğum Tarixi (Doğum Captcha)</label>
-                <input
-                  type="text"
-                  placeholder="DD/MM/YYYY"
-                  value={localBirth}
-                  onChange={(e) => setLocalBirth(e.target.value)}
-                  className="w-full p-2.5 border border-gray-200 rounded-sm text-sm focus:ring-1 focus:ring-[#00965e] focus:border-[#00965e] outline-none transition-all font-mono"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">FİN (7 simvol)</label>
-                <input
-                  type="text"
-                  maxLength={7}
-                  placeholder="69SZNKO"
-                  value={localFin}
-                  onChange={(e) => setLocalFin(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7))}
-                  className="w-full p-2.5 border border-gray-200 rounded-sm text-sm focus:ring-1 focus:ring-[#00965e] focus:border-[#00965e] outline-none transition-all font-mono uppercase tracking-widest"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Din</label>
-                <input
-                  type="text"
-                  maxLength={40}
-                  value={localReligion}
-                  onChange={(e) => setLocalReligion(e.target.value)}
-                  className="w-full p-2.5 border border-gray-200 rounded-sm text-sm focus:ring-1 focus:ring-[#00965e] focus:border-[#00965e] outline-none transition-all"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Sevimli Maşın</label>
-                <input
-                  type="text"
-                  maxLength={40}
-                  value={localFavoriteCar}
-                  onChange={(e) => setLocalFavoriteCar(e.target.value)}
-                  className="w-full p-2.5 border border-gray-200 rounded-sm text-sm focus:ring-1 focus:ring-[#00965e] focus:border-[#00965e] outline-none transition-all"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer Save Button */}
-      <div className="p-6 bg-gray-50/50 border-t border-gray-50 flex flex-col sm:flex-row sm:items-center gap-4 sm:justify-between">
-        <div className="text-sm font-medium">
-          {isLoadingSettings && <span className="text-gray-400">Ayarlar yüklənir...</span>}
-          {settingsError && <span className="text-red-500">{settingsError}</span>}
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={isSaving || isLoadingSettings}
-          className={`flex items-center gap-3 px-10 py-3 bg-[#00965e] text-white rounded-sm font-bold text-[14px] shadow-sm hover:shadow-md hover:bg-[#007a4d] transition-all disabled:opacity-70 disabled:cursor-not-allowed`}
-        >
-          {isSaving ? (
-            <>
-              <RefreshCw size={18} className="animate-spin" />
-              <span>Yadda saxlanılır...</span>
-            </>
-          ) : (
-            <>
-              <span>Yadda saxla</span>
-              <ChevronRight size={18} />
-            </>
-          )}
-        </button>
-      </div>
-    </div>
-  );
-};
-
 // --- Main App ---
 
 const DemoContent: React.FC = () => {
   const router = useRouter();
+  const [captchaStatus, setCaptchaStatus] = useState<SettingsStatus>({ blocked: true, reason: 'CAPTCHA ayarları yüklənir.' });
+  const [launchError, setLaunchError] = useState('');
   const [salesCountdown, setSalesCountdown] = useState<number | null>(null);
   const [isSalesReady, setIsSalesReady] = useState(false);
 
@@ -522,6 +222,8 @@ const DemoContent: React.FC = () => {
   }, [salesCountdown]);
 
   const handleSalesCardClick = () => {
+    if (captchaStatus.blocked) { setLaunchError(captchaStatus.reason); return; }
+    setLaunchError('');
     if (isSalesReady) {
       router.push('/demo/sales');
       return;
@@ -629,7 +331,8 @@ const DemoContent: React.FC = () => {
                 <InstructionRow label="Satış modulu üzrə" />
                 <InstructionRow label="Gözləmə qaydasında mənzil seçiminə dair" />
               </div>
-              <CaptchaSettings />
+              {launchError && captchaStatus.blocked && <p role="alert" className="mt-6 text-sm text-red-600">{launchError}</p>}
+              <CaptchaSettingsPanel onStatusChange={setCaptchaStatus} />
             </div>
             <div className="lg:w-1/3">
               <ProfileSection user={mockUser} />
@@ -647,39 +350,9 @@ const DemoContent: React.FC = () => {
 // --- Page wrapper with auth guard ---
 
 export default function DemoPage() {
-  const dispatch = useAppDispatch();
-  const { isAuthenticated, isLoading } = useAppSelector((state) => state.auth);
+  const { user, isAuthenticated, isLoading } = useAppSelector(state => state.auth);
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (mounted && !isAuthenticated && !isLoading) {
-      router.push('/login');
-    }
-  }, [isAuthenticated, isLoading, router, mounted]);
-
-  const handleLogout = async () => {
-    await dispatch(logoutUser());
-    router.push('/login');
-  };
-
-  if (!mounted || isLoading || !isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-400"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Not: Verdiğin layout'u birebir göstermek için, buraya ThemeToggle / gerçek logout bağlamadım.
-  // Logout'a basınca bir şey olmasını istersen, Header'ı prop ile handleLogout alacak şekilde genişletebiliriz.
-
-  return <DemoContent />;
+  useEffect(() => { if (!isAuthenticated && !isLoading) router.push('/login'); }, [isAuthenticated, isLoading, router]);
+  if (isLoading || !isAuthenticated) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500">Yüklənir...</div>;
+  return <DemoContent key={user?.uid} />;
 }

@@ -8,11 +8,12 @@ import { Timestamp } from 'firebase/firestore';
 import { Check, ChevronLeft, ChevronRight, House, Info, LockKeyhole, LogOut, Map, SlidersHorizontal, X } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { logoutUser } from '@/store/slices/authSlice';
-import { setCaptchaSettings, type CaptchaState, type CaptchaType } from '@/store/slices/captchaSlice';
+import { replaceCaptchaSettings } from '@/store/slices/captchaSlice';
+import { captchaSettingsErrors, normalizeCaptchaSettings, resolveCaptchaSettings, type CaptchaState, type CaptchaType } from '@/lib/captcha-config';
 import { getUserCaptchaSettings } from '@/lib/captchaSettings';
 import { saveSalesSession, type SalesSession } from '@/lib/salesSessions';
 import { addressOptions, changeAddress, emptyAddress, findApartment, projectFor, salesCatalog, type SalesAddress, type SalesApartment, type CatalogBuilding } from '@/lib/sales-catalog';
-import { captchaPlan, SalesClock, type SalesPhase } from '@/lib/sales-flow';
+import { captchaPlan, CaptchaSequence, SalesClock, type SalesPhase } from '@/lib/sales-flow';
 import DateCaptcha from '@/components/DateCaptcha';
 import NumberCaptcha from '@/components/NumberCaptcha';
 import TextCaptcha from '@/components/TextCaptcha';
@@ -24,14 +25,12 @@ import styles from './sales.module.css';
 const paymentLabels = { own: 'Öz vəsaiti hesabına', mortgage: 'İpoteka krediti hesabına' };
 type Payment = keyof typeof paymentLabels;
 type SavedSession = Omit<SalesSession, 'createdAt'>;
-interface Run { start: number; clock: SalesClock; settings: CaptchaState; plan: ReturnType<typeof captchaPlan> }
+interface Run { start: number; clock: SalesClock; settings: CaptchaState; plan: ReturnType<typeof captchaPlan>; sequence: CaptchaSequence }
 function countdown(seconds: number) { const left = Math.max(0, Math.ceil(seconds)); return `${Math.floor(left / 60).toString().padStart(2, '0')}:${(left % 60).toString().padStart(2, '0')}`; }
 
 export default function SalesSimulator() {
   const router = useRouter(), dispatch = useAppDispatch();
   const { user, userData } = useAppSelector(state => state.auth);
-  const defaults = useAppSelector(state => state.captcha);
-  const initialSettings = useRef(defaults);
   const [run, setRun] = useState<Run | null>(null);
   const [settingsError, setSettingsError] = useState('');
   const [phase, setPhase] = useState<SalesPhase>('project');
@@ -47,6 +46,7 @@ export default function SalesSimulator() {
   const [progress, setProgress] = useState(0);
   const [captchaOpen, setCaptchaOpen] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [captchaKey, setCaptchaKey] = useState(0);
   const [incorrect, setIncorrect] = useState(0);
   const [logs, setLogs] = useState<{ type: string; duration: number }[]>([]);
@@ -55,7 +55,6 @@ export default function SalesSimulator() {
   const [saveError, setSaveError] = useState('');
   const busy = useRef(false), finished = useRef(false);
   const pendingAction = useRef<'method' | 'search'>('method');
-  const captchaStart = useRef(0);
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const project = projectFor(address.projectId);
@@ -69,11 +68,12 @@ export default function SalesSimulator() {
     getUserCaptchaSettings(user.uid).then(({ settings, error }) => {
       if (cancelled) return;
       if (error) { setSettingsError(error); return; }
-      const config = { ...initialSettings.current, ...settings,
-        dateConfig: { ...initialSettings.current.dateConfig, ...settings?.dateConfig },
-        personalConfig: { ...initialSettings.current.personalConfig, ...settings?.personalConfig } };
-      dispatch(setCaptchaSettings(config));
-      setRun({ start: Date.now(), clock: new SalesClock(), settings: config, plan: captchaPlan(config.enabled, config.requiredCount, config.allowedTypes) });
+      const config = normalizeCaptchaSettings(resolveCaptchaSettings(settings));
+      const errors = captchaSettingsErrors(config);
+      if (errors.length) { setSettingsError(errors.join(' ')); return; }
+      const plan = captchaPlan(config.enabled, config.requiredCount, config.allowedTypes);
+      dispatch(replaceCaptchaSettings(config));
+      setRun({ start: Date.now(), clock: new SalesClock(), settings: config, plan, sequence: new CaptchaSequence(plan) });
     });
     return () => { cancelled = true; };
   }, [dispatch, user?.uid]);
@@ -86,7 +86,8 @@ export default function SalesSimulator() {
   useEffect(() => {
     if (!captchaOpen) return;
     const previous = document.activeElement as HTMLElement | null;
-    dialog.current?.querySelector<HTMLElement>('input, button')?.focus();
+    const input = dialog.current?.querySelector<HTMLElement>('input:not(:disabled)');
+    (input ?? dialog.current?.querySelector<HTMLElement>('button:not(:disabled):not([aria-label="Bağla"])'))?.focus();
     return () => previous?.focus();
   }, [captchaOpen]);
 
@@ -115,34 +116,38 @@ export default function SalesSimulator() {
   function gated(action: 'method' | 'search') {
     if (!run) return;
     const step = action === 'method' ? 1 : 2;
-    if (run.plan[progress]?.step === step) {
-      pendingAction.current = action; captchaStart.current = Date.now(); setCaptchaOpen(true);
+    if (run.sequence.current?.step === step) {
+      pendingAction.current = action;
+      if (run.sequence.open(step)) setCaptchaOpen(true);
     } else proceed(action);
   }
+  function closeCaptcha() {
+    if (run?.sequence.close()) setCaptchaOpen(false);
+  }
   function verify(correct: boolean) {
-    if (!run || busy.current) return;
+    if (!run || busy.current || !run.sequence.answer(correct)) return;
     busy.current = true;
     if (!correct) {
-      setIncorrect(count => count + 1);
-      feedbackTimer.current = setTimeout(() => { setCaptchaKey(key => key + 1); busy.current = false; }, 500);
+      setIncorrect(run.sequence.incorrect); setRetrying(true);
+      feedbackTimer.current = setTimeout(() => { run.sequence.retry(); busy.current = false; setRetrying(false); }, 1500);
       return;
     }
-    setLogs(previous => [...previous, { type: run.plan[progress].type, duration: (Date.now() - captchaStart.current) / 1000 }]);
-    setVerified(true);
+    setLogs([...run.sequence.logs]); setVerified(true);
     feedbackTimer.current = setTimeout(() => {
-      const next = progress + 1, action = pendingAction.current;
-      setProgress(next); setVerified(false); setCaptchaKey(key => key + 1); busy.current = false;
-      if (run.plan[next]?.step === (action === 'method' ? 1 : 2)) captchaStart.current = Date.now();
+      const action = pendingAction.current, step = action === 'method' ? 1 : 2;
+      run.sequence.advance(); setProgress(run.sequence.progress); setVerified(false); setCaptchaKey(key => key + 1); busy.current = false;
+      if (run.sequence.current?.step === step) run.sequence.open(step);
       else { setCaptchaOpen(false); proceed(action); }
     }, 1000);
   }
+
   async function persist(session: SavedSession) {
     setSaveState('saving');
     const response = await saveSalesSession(session);
     setSaveState(response.error ? 'error' : 'saved'); setSaveError(response.error || '');
   }
   function finish() {
-    if (!run || !result || !user || finished.current) return;
+    if (!run || !result || !user || finished.current || run.sequence.progress !== run.plan.length) return;
     finished.current = true;
     const end = Date.now(), durations = run.clock.finish();
     const session: SavedSession = {
@@ -174,7 +179,7 @@ export default function SalesSimulator() {
     if (type === 'text') return <TextCaptcha key={key} onVerify={verify} />;
     return <PersonalInfoCaptcha key={key} type={type} correctAnswer={config.personalConfig[type]} onVerify={verify} />;
   }
-  if (!run) return <div className={styles.loading}>{settingsError ? <div role="alert">{settingsError}<button onClick={() => window.location.reload()}>Yenidən yoxla</button></div> : 'Yüklənir...'}</div>;
+  if (!run) return <div className={styles.loading}>{settingsError ? <div role="alert">{settingsError}<a href="/demo">CAPTCHA ayarlarına qayıt</a><button onClick={() => window.location.reload()}>Yenidən yoxla</button></div> : 'Yüklənir...'}</div>;
   const searching = phase === 'search', complete = phase === 'complete';
   const nextDisabled = phase === 'project' ? !project : phase === 'payment' ? !payment : phase === 'method' ? !method : !result;
   return <div className={styles.page} data-view={phase}>
@@ -221,8 +226,8 @@ export default function SalesSimulator() {
     </main>}
     {phase === 'method' && <footer className={styles.footer}>{new Date().getFullYear()} © MİDA</footer>}
     {captchaOpen && run.plan[progress] && <div className={styles.modalBackdrop}><div ref={dialog} className={styles.dialog} role="dialog" aria-modal="true" aria-label="Təhlükəsizlik yoxlaması" onKeyDown={event => {
-      if (event.key === 'Escape' && !busy.current) setCaptchaOpen(false);
+      if (event.key === 'Escape' && !busy.current) closeCaptcha();
       if (event.key === 'Tab') { const items = dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]'); if (!items?.length) return; const first = items[0], last = items[items.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } }
-    }}><button className={styles.closeDialog} aria-label="Bağla" disabled={busy.current} onClick={() => setCaptchaOpen(false)}><X size={18} /></button>{renderCaptcha(run.plan[progress].type)}{verified && <div className={styles.verified}><Check size={32} />TƏSDİQLƏNDİ ✓</div>}</div></div>}
+    }}><button className={styles.closeDialog} aria-label="Bağla" disabled={verified || retrying} onClick={closeCaptcha}><X size={18} /></button><div className={styles.captchaProgress} aria-live="polite">CAPTCHA {progress + 1} / {run.plan.length}</div>{renderCaptcha(run.plan[progress].type)}{verified && <div className={styles.verified}><Check size={32} />TƏSDİQLƏNDİ ✓</div>}</div></div>}
   </div>;
 }

@@ -1,3 +1,4 @@
+import { captchaPlan, CaptchaSequence } from '../src/lib/sales-flow';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { NextRequest } from 'next/server';
@@ -263,6 +264,34 @@ test('sales address flow saves selected housing metadata with ownership and supp
   const session = listed.data.sessions.find((item: { id: string }) => item.id === saved.data.id);
   assert.deepEqual(session.selection, selection); assert.equal(session.email, 'student@example.com');
   assert.equal((await call('sessions/sales', 'POST', { ...payload, email: 'other@example.com' }, cookie)).response.status, 403);
+});
+test('CAPTCHA settings persist per owner, validate enabled answers, and feed the exact total simulation plan', async () => {
+  const { db } = adminServices();
+  const first = await call('auth/login', 'POST', { email: 'student@example.com', password });
+  const cookie = cookieFrom(first.response, USER_COOKIE), uid = first.data.user.uid;
+  const other = await call('auth/login', 'POST', { email: 'isolated@example.com', password });
+  const otherCookie = cookieFrom(other.response, USER_COOKIE);
+  const config = { enabled: true, allowedTypes: ['fin', 'religion', 'favoriteCar'], requiredCount: 3, dateConfig: { todayDate: '', birthDate: '' }, personalConfig: { fin: 'ab12cd3', religion: '  İslam  ', favoriteCar: 'Mercedes   Benz' } };
+  assert.equal((await call(`captcha-settings/${uid}`, 'PUT', config)).response.status, 401);
+  assert.equal((await call(`captcha-settings/${uid}`, 'PUT', config, otherCookie)).response.status, 403);
+  assert.equal((await call(`captcha-settings/${uid}`, 'PUT', config, cookie)).response.status, 200);
+  const saved = (await call(`captcha-settings/${uid}`, 'GET', undefined, cookie)).data.settings;
+  assert.deepEqual(saved.personalConfig, { fin: 'AB12CD3', religion: 'İslam', favoriteCar: 'Mercedes Benz' });
+  const sequence = new CaptchaSequence(captchaPlan(saved.enabled, saved.requiredCount, saved.allowedTypes, () => .4));
+  for (const step of [1, 2] as const) while (sequence.current?.step === step) {
+    sequence.open(step); assert.ok(sequence.answer(true)); sequence.advance();
+  }
+  assert.equal(sequence.logs.length, 3); assert.equal(sequence.progress, 3);
+  assert.equal(new Set(sequence.logs.map(log => log.type)).size, 3);
+  for (const invalid of [{ ...config, requiredCount: 2.5 }, { ...config, allowedTypes: [] }, { ...config, personalConfig: { ...config.personalConfig, religion: '' } }, { ...config, allowedTypes: ['date'], dateConfig: { todayDate: '31/02/2026', birthDate: '' } }]) {
+    assert.equal((await call(`captcha-settings/${uid}`, 'PUT', invalid, cookie)).response.status, 400);
+  }
+  assert.equal((await call(`captcha-settings/${uid}`, 'GET', undefined, cookie)).data.settings.requiredCount, 3, 'invalid writes preserve saved settings');
+  assert.equal((await call(`captcha-settings/${uid}`, 'PUT', { ...config, enabled: false, allowedTypes: [], personalConfig: { fin: '', religion: '', favoriteCar: '' } }, cookie)).response.status, 200);
+  const disabled = (await call(`captcha-settings/${uid}`, 'GET', undefined, cookie)).data.settings;
+  assert.deepEqual(captchaPlan(disabled.enabled, disabled.requiredCount, disabled.allowedTypes), []);
+  await db.collection('captchaSettings').doc(other.data.user.uid).delete();
+  assert.equal((await call(`captcha-settings/${other.data.user.uid}`, 'GET', undefined, otherCookie)).data.settings, null);
 });
 test('pinned admin UID rejects other Auth accounts and server limits repeated login attempts', async () => {
   const { auth } = adminServices();

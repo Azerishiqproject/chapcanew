@@ -1,3 +1,4 @@
+import { resolveCaptchaSettings } from '@/lib/captcha-config';
 import { salesBuilding } from '@/lib/server/sales-catalog';
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldPath, Timestamp } from 'firebase-admin/firestore';
@@ -173,7 +174,7 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
       const ref = db.collection('captchaSettings').doc(userId);
       if (method === 'GET') {
         const data = (await ref.get()).data();
-        return json({ settings: data ? settingsFields(data) : null });
+        return json({ settings: data ? resolveCaptchaSettings(data) : null });
       }
       if (method === 'PUT') {
         await ref.set({ ...settingsFields(await readBody(request)), updatedAt: Timestamp.now() });

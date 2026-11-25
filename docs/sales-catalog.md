@@ -19,8 +19,19 @@ Bunlar mimari plan verileridir; güncel satış stoğu veya fiyat değildir. `Sa
 
 ## Süre ve kayıtlar
 
-Kullanıcı CAPTCHA ayarları yüklendikten sonra tur başlar. İlk üç ekran `step1Duration`, adres arama `step2Duration` içinde birikir. Geri dönüşler de ilgili aşamaya eklenir. CAPTCHA türleri, toplam sayısı ve iki aşamaya dağılımı korunur; kontroller modalda açılır. CAPTCHA çözüm süreleri aşama sürelerinin içindedir ve ayrıca raporlanır; üç süre birbirine toplanmaz. Yanlış cevapların harcadığı süre doğru çözüme kadar CAPTCHA süresine dahildir.
+Kullanıcı CAPTCHA ayarları yüklendikten sonra tur başlar. İlk üç ekran `step1Duration`, adres arama `step2Duration` içinde birikir. Geri dönüşler de ilgili aşamaya eklenir. CAPTCHA türleri, toplam sayısı ve iki aşamaya dağılımı korunur; kontroller modalda açılır. CAPTCHA çözüm süreleri aşama sürelerinin içindedir ve ayrıca raporlanır; üç süre birbirine toplanmaz. Yanlış cevaplarda aktif çözüm süresi korunur; otomatik geri bildirim bekleme süreleri ve pencerenin kapalı kaldığı süre CAPTCHA çözüm süresine dahil edilmez.
 
 Sonuca ilk tıklamada saat durur. Süreler, CAPTCHA doğru/yanlış sayıları, proje ve seçilen adres/ödeme yöntemi mevcut `sessions/sales` API'sine yazılır. Kaydetme hatası tur ekranında açıkça gösterilir ve aynı dondurulmuş sonuçla yeniden denenebilir. İstek kaybolup cevabı alınamadığında mevcut otomatik kimlikli kayıt API'si tam idempotentlik garanti etmez. Eski satış kayıtları ek `selection` alanı olmadan okunmaya devam eder. Firestore kuralları/indeksleri değişmez.
 
 Kontroller: `npm run test:sales`, `npm run test:auth`, Auth/Firestore emülatörleriyle `npm run test:integration`, TypeScript ve production build. Görsel kontrol 1440 × 810 boyutunda yerel emülatör hesabıyla yapılır; CAPTCHA yalnızca bu geçici test verisinde kapalıdır.
+
+
+## CAPTCHA ayarlarının uygulanması
+
+`Sequential Sayı` **tur boyunca toplam doğru çözüm sayısıdır**. 1 ise seçim ekranında bir kontrol açılır; 2–5 ise her iki aşamada en az bir kontrol olacak şekilde seçim ve arama aşamalarına dağıtılır. Yalnız seçilen türler kullanılır; seçilen türler bitmeden aynı tür tekrar seçilmez. Ayar sayısı tür sayısından küçükse seçilen türlerden rastgele bir alt küme gösterilir. Sistem kapalıysa kontrol açılmaz. Geri dönmek veya pencereyi kapatıp açmak çözülmüş kontrolleri tekrar istemez; yanlış cevap ilerlemeyi artırmaz.
+
+Ayarlar kullanıcı kimliğiyle sunucudan yüklenir. Kayıt yoksa o güne ait yeni varsayılanlar kullanılır; önceki hesabın Redux ayarları devralınmaz. Kaydedilmemiş/geçersiz ayarlar satış başlatmayı engeller. Yeni tur ayarların sabit bir kopyasını kullanır; başka sekmede yapılan değişiklikler bir sonraki tura uygulanır. Etkin seçili tarih/kişisel cevap alanları istemci ve sunucuda aynı kurallarla doğrulanır. Geçersiz eski ayarlar ayar ekranından düzeltilebilir; bozuk cevapla tur başlatılmaz.
+
+Yedi CAPTCHA bileşeni hem doğru hem yanlış cevabı bildirir. Bir giriş yalnızca bir kez bildirilir; ebeveyn ekranın yeniden çizilmesi cevap üretmez. Yanlış cevapta 1.5 saniye sonra giriş yenilenir, doğru cevapta sıra bir kez ilerler. Aktif çözüm süreleri kapanışlar arasında birikir. Tarih biçimleri normalleştirilir ve gerçek takvim günü kontrol edilir. İngilizce metin kodları ile Azerice kişisel cevapların büyük/küçük harf karşılaştırmaları ayrı yapılır.
+
+`npm run test:captcha` bileşenleri, ayar formunu, hesap değişimi yarışını ve sıra modelini test eder. Emülatör entegrasyon testi ayrıca ayar sahipliğini, kalıcılığı, geçersiz kaydın reddini ve tur toplamını doğrular.

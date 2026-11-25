@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { matchesAnswer } from '@/lib/captcha-config';
+import { useCaptchaFeedback } from './useCaptchaFeedback';
 
 type PersonalCaptchaType = 'fin' | 'religion' | 'favoriteCar';
 
@@ -25,23 +27,19 @@ const captchaCopy: Record<PersonalCaptchaType, { title: string; placeholder: str
   },
 };
 
-function normalize(value: string) {
-  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('az');
-}
-
 export default function PersonalInfoCaptcha({
   type,
   correctAnswer,
   onVerify,
 }: PersonalInfoCaptchaProps) {
   const [value, setValue] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const { blocked, error, submit, clearError } = useCaptchaFeedback(onVerify, () => setValue(''));
   const copy = captchaCopy[type];
   const isFin = type === 'fin';
   const isComplete = isFin ? value.length === 7 : value.trim().length > 0;
 
   const handleChange = (nextValue: string) => {
-    setError(null);
+    clearError();
     if (isFin) {
       setValue(nextValue.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7));
       return;
@@ -50,18 +48,8 @@ export default function PersonalInfoCaptcha({
   };
 
   const handleVerify = () => {
-    const isCorrect = normalize(value) === normalize(correctAnswer);
-    if (isCorrect) {
-      onVerify?.(true);
-      return;
-    }
-
-    onVerify?.(false);
-    setError('Məlumat düzgün daxil edilməyib');
-    setTimeout(() => {
-      setValue('');
-      setError(null);
-    }, 1500);
+    if (!isComplete || blocked) return;
+    submit(matchesAnswer(type, value, correctAnswer), 'Məlumat düzgün daxil edilməyib');
   };
 
   return (
@@ -74,6 +62,7 @@ export default function PersonalInfoCaptcha({
       <div className="relative z-10 mb-5 rounded-xl border border-gray-100 bg-gray-50 p-3 shadow-sm">
         <input
           type="text"
+          aria-label={copy.title} disabled={blocked}
           value={value}
           maxLength={isFin ? 7 : 40}
           onChange={(event) => handleChange(event.target.value)}
@@ -91,7 +80,7 @@ export default function PersonalInfoCaptcha({
           </div>
         )}
         {error && (
-          <div className="mt-2 text-center text-[10px] font-bold uppercase tracking-wider text-red-500">
+          <div role="alert" className="mt-2 text-center text-[10px] font-bold uppercase tracking-wider text-red-500">
             {error}
           </div>
         )}
@@ -99,7 +88,7 @@ export default function PersonalInfoCaptcha({
 
       <button
         onClick={handleVerify}
-        disabled={!isComplete}
+        disabled={blocked || !isComplete}
         className="relative z-10 h-11 w-full -translate-y-0.5 rounded-lg border border-white/10 bg-[#00965e] text-[13px] font-black uppercase tracking-wider text-white shadow-[0_2px_0_rgb(0,100,60)] transition-all active:translate-y-0 active:shadow-none disabled:translate-y-0 disabled:opacity-50 disabled:shadow-none"
       >
         Təsdiqlə

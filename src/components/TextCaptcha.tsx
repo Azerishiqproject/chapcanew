@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { matchesAnswer } from '@/lib/captcha-config';
+import { useCaptchaFeedback } from './useCaptchaFeedback';
 
 interface TextCaptchaProps {
   onVerify?: (isCorrect: boolean) => void;
@@ -17,9 +19,10 @@ function generateRandomText(length: number = 5): string {
 
 export default function TextCaptcha({ onVerify }: TextCaptchaProps) {
   const [userInput, setUserInput] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [captchaText, setCaptchaText] = useState<string>(() => generateRandomText(5));
+
+  const { blocked, error, submit, clearError } = useCaptchaFeedback(onVerify, () => { setUserInput(''); setCaptchaText(generateRandomText(5)); });
 
   useEffect(() => {
     if (!canvasRef.current || !captchaText) return;
@@ -117,25 +120,9 @@ export default function TextCaptcha({ onVerify }: TextCaptchaProps) {
   }, [captchaText]);
 
   const handleVerify = () => {
-    if (userInput.toLowerCase() === captchaText.toLowerCase()) {
-      onVerify?.(true);
-    } else {
-      setError('Mətn düzgün daxil edilməyib');
-      setTimeout(() => {
-        setUserInput('');
-        setError(null);
-        setCaptchaText(generateRandomText(5));
-      }, 1500);
-    }
+    if (userInput.length !== 5 || blocked) return;
+    submit(matchesAnswer('text', userInput, captchaText), 'Mətn düzgün daxil edilməyib');
   };
-
-  const DigitBox = ({ value }: { value: string }) => (
-    <div className="flex flex-col items-center">
-      <div className="w-12 h-14 bg-white border border-gray-100 rounded-md shadow-sm flex items-center justify-center text-[20px] font-bold text-gray-800 relative lowercase">
-        {value ? value : <span className="absolute bottom-3 text-gray-300 font-normal">_</span>}
-      </div>
-    </div>
-  );
 
   return (
     <div className="w-full font-sans bg-white h-auto flex flex-col pt-5 pb-6 px-4 relative rounded-[24px] shadow-xl overflow-hidden border border-gray-100">
@@ -164,9 +151,11 @@ export default function TextCaptcha({ onVerify }: TextCaptchaProps) {
 
         <input
           type="text"
+          aria-label="Şəkildəki mətn" disabled={blocked} maxLength={5} autoComplete="off"
+          onKeyDown={event => { if (event.key === 'Enter') handleVerify(); }}
           value={userInput}
           onChange={(e) => {
-            setError(null);
+            clearError();
             if (e.target.value.length <= 5) setUserInput(e.target.value);
           }}
           className="absolute inset-0 opacity-0 cursor-default"
@@ -174,7 +163,7 @@ export default function TextCaptcha({ onVerify }: TextCaptchaProps) {
         />
 
         {error && (
-          <div className="absolute -bottom-6 left-0 right-0 text-center text-red-500 text-[10px] font-bold uppercase tracking-wider transition-all">
+          <div role="alert" className="absolute -bottom-6 left-0 right-0 text-center text-red-500 text-[10px] font-bold uppercase tracking-wider transition-all">
             {error}
           </div>
         )}
@@ -182,7 +171,7 @@ export default function TextCaptcha({ onVerify }: TextCaptchaProps) {
 
       <button
         onClick={handleVerify}
-        disabled={userInput.length < 5}
+        disabled={blocked || userInput.length < 5}
         className="w-full h-11 bg-[#00965e] text-white font-black uppercase tracking-wider rounded-lg shadow-[0_2px_0_rgb(0,100,60)] active:shadow-none translate-y-[-2px] active:translate-y-0 transition-all disabled:opacity-50 disabled:translate-y-0 disabled:shadow-none relative z-10 mt-auto border border-white/10 text-[13px]"
       >
         Təsdiqlə

@@ -1,3 +1,4 @@
+import { CAPTCHA_TYPES, captchaSettingsErrors, normalizeCaptchaSettings, type CaptchaState } from '@/lib/captcha-config';
 import { Timestamp, type DocumentData, type DocumentSnapshot } from 'firebase-admin/firestore';
 import { ApiError, emailAddress, record, text } from './security';
 
@@ -73,16 +74,17 @@ export function sessionFields(kind: SessionKind, input: Record<string, unknown>)
   return result;
 }
 export function settingsFields(input: Record<string, unknown>) {
-  const types = ['date', 'number', 'text', 'birthdate', 'fin', 'religion', 'favoriteCar'];
-  if (!Array.isArray(input.allowedTypes) || input.allowedTypes.length < 1 || input.allowedTypes.length > types.length ||
-      input.allowedTypes.some((value) => !types.includes(String(value))) ||
-      !Number.isInteger(input.requiredCount) || number(input.requiredCount, 5) < 1 || typeof input.enabled !== 'boolean') {
+  if (!Array.isArray(input.allowedTypes) || input.allowedTypes.length > CAPTCHA_TYPES.length ||
+      input.allowedTypes.some(value => !CAPTCHA_TYPES.includes(value as typeof CAPTCHA_TYPES[number])) || typeof input.enabled !== 'boolean') {
     throw new ApiError(400, 'Geçersiz CAPTCHA ayarları.');
   }
   const date = record(input.dateConfig), personal = record(input.personalConfig);
-  return {
-    allowedTypes: [...new Set(input.allowedTypes)], requiredCount: input.requiredCount, enabled: input.enabled,
+  const settings = normalizeCaptchaSettings({
+    allowedTypes: input.allowedTypes as CaptchaState['allowedTypes'], requiredCount: input.requiredCount as number, enabled: input.enabled,
     dateConfig: { todayDate: text(date.todayDate, 20, 0), birthDate: text(date.birthDate, 20, 0) },
-    personalConfig: { fin: text(personal.fin, 100, 0), religion: text(personal.religion, 100, 0), favoriteCar: text(personal.favoriteCar, 100, 0) },
-  };
+    personalConfig: { fin: text(personal.fin, 100, 0), religion: text(personal.religion, 200, 0), favoriteCar: text(personal.favoriteCar, 200, 0) },
+  });
+  const errors = captchaSettingsErrors(settings);
+  if (errors.length) throw new ApiError(400, errors.join(' '));
+  return settings;
 }

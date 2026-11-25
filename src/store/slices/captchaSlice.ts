@@ -1,54 +1,15 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-export type CaptchaType =
-    | 'date'
-    | 'number'
-    | 'text'
-    | 'birthdate'
-    | 'fin'
-    | 'religion'
-    | 'favoriteCar';
+import { defaultCaptchaSettings, type CaptchaState, type CaptchaType } from '@/lib/captcha-config';
+export type { CaptchaState, CaptchaType } from '@/lib/captcha-config';
 
-export interface CaptchaState {
-    allowedTypes: CaptchaType[];
-    requiredCount: number;
-    dateConfig: {
-        todayDate: string;
-        birthDate: string;
-    };
-    personalConfig: {
-        fin: string;
-        religion: string;
-        favoriteCar: string;
-    };
-    enabled: boolean;
-}
-
-const initialState: CaptchaState = {
-    allowedTypes: ['date', 'number', 'text', 'birthdate'],
-    requiredCount: 1,
-    dateConfig: {
-        todayDate: (() => {
-            const d = new Date();
-            const day = String(d.getDate()).padStart(2, '0');
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const year = d.getFullYear();
-            return `${day}/${month}/${year}`;
-        })(),
-        birthDate: '25/08/1990',
-    },
-    personalConfig: {
-        fin: '69SZNKO',
-        religion: 'İslam',
-        favoriteCar: 'Mercedes',
-    },
-    enabled: true,
-};
+const initialState = defaultCaptchaSettings();
 
 const captchaSlice = createSlice({
     name: 'captcha',
     initialState,
     reducers: {
+        replaceCaptchaSettings: (_state, action: PayloadAction<CaptchaState>) => action.payload,
         setAllowedTypes: (state, action: PayloadAction<CaptchaType[]>) => {
             state.allowedTypes = action.payload;
         },
@@ -73,9 +34,13 @@ const captchaSlice = createSlice({
             if (settings.enabled !== undefined) state.enabled = settings.enabled;
         },
     },
+    extraReducers: builder => {
+        builder.addMatcher(action => ['auth/logout/fulfilled', 'auth/login/pending', 'auth/login/fulfilled', 'auth/checkSession/fulfilled', 'auth/checkSession/rejected', 'auth/clearSession'].includes(action.type), () => defaultCaptchaSettings());
+    },
 });
 
 export const {
+    replaceCaptchaSettings,
     setAllowedTypes,
     setRequiredCount,
     updateDateConfig,
