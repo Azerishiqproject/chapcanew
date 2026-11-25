@@ -1,3 +1,4 @@
+import { salesBuilding } from '@/lib/server/sales-catalog';
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldPath, Timestamp } from 'firebase-admin/firestore';
 import { adminServices } from '@/lib/server/firebase-admin';
@@ -72,6 +73,8 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
 
     const identity = await getIdentity(request);
     if (route === 'auth/session' && method === 'GET') return json({ user: identity });
+
+    if (path[0] === 'sales' && path[1] === 'catalog' && path.length === 4 && method === 'GET') return json({ building: await salesBuilding(path[2], path[3]) });
 
     if (route === 'aim/runs' && method === 'POST') return json(await startAimRun(identity, await readBody(request)), 201);
     if (route === 'aim/comparison' && method === 'GET') return json(await trainingComparison(identity, Number(request.nextUrl.searchParams.get('stage') || 1), request.nextUrl.searchParams.get('condition'), request.nextUrl.searchParams.get('protocol') || undefined));

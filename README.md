@@ -129,3 +129,7 @@ npm run test:auth
 firebase emulators:exec --project demo-chapca-auth --only auth,firestore 'npm run test:integration'
 npm run build
 ```
+
+## Satış demosu
+
+`/demo/sales` artık proje, ödeme ve seçim yöntemini ayrı ekranlarda gösterir. Adres alanları MİDA plan kataloğuna bağlıdır; “Axtar” seçilen daireyi sağda gösterir ve sonuç seçilince tur tamamlanır. Referans ölçüleri, resmî veri kaynakları, çevrimdışı katalog kapsamı ve kayıt davranışı için [satış demosu notlarına](docs/sales-catalog.md) bakın. `npm run test:sales` adres ilişkilerini ve aşama sürelerini doğrular.

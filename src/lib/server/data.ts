@@ -62,6 +62,13 @@ export function sessionFields(kind: SessionKind, input: Record<string, unknown>)
   } else {
     for (const key of ['step1Duration', 'step2Duration', 'captchaDuration', 'correctCaptchas', 'incorrectCaptchas']) result[key] = number(input[key]);
     result.project = text(input.project);
+    if (input.selection !== undefined) {
+      const selection = record(input.selection);
+      if (!['own', 'mortgage'].includes(String(selection.paymentMethod)) || selection.method !== 'address') throw new ApiError(400, 'Geçersiz satış seçimi.');
+      result.selection = { paymentMethod: selection.paymentMethod, method: 'address' };
+      for (const key of ['projectId', 'building', 'entrance', 'floor', 'apartment', 'catalogVersion']) result.selection[key] = text(selection[key], 80);
+      for (const key of ['rooms', 'internalArea', 'externalArea', 'floorCount']) result.selection[key] = number(selection[key], 10000);
+    }
   }
   return result;
 }

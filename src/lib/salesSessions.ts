@@ -1,3 +1,4 @@
+import type { SalesApartment } from './sales-catalog';
 import { Timestamp } from 'firebase/firestore';
 import { api, errorMessage, type PageCursor } from './api-client';
 
@@ -13,6 +14,7 @@ export interface SalesSession {
     correctCaptchas: number;
     incorrectCaptchas: number;
     project: string;
+    selection?: SalesApartment & { paymentMethod: 'own' | 'mortgage'; method: 'address'; catalogVersion: string };
     createdAt: Timestamp;
 }
 

@@ -248,6 +248,22 @@ test('restored video-tempo games keep all admin metrics and compare separately f
   const legacy = await call('aim/comparison?stage=1', 'GET', undefined, adminCookie);
   assert.equal(legacy.data.rows.length, 2); assert.equal(legacy.data.rows[0].completedPlays, 1);
 });
+test('sales address flow saves selected housing metadata with ownership and supports legacy sessions', async () => {
+  const cookie = cookieFrom((await call('auth/login', 'POST', { email: 'student@example.com', password })).response, USER_COOKIE);
+  assert.equal((await call('sales/catalog/300016/2')).response.status, 401);
+  const catalog = await call('sales/catalog/300016/2', 'GET', undefined, cookie);
+  assert.equal(catalog.response.status, 200); assert.equal(catalog.data.building.complete, true);
+  assert.equal((await call('sales/catalog/300016/not-a-building', 'GET', undefined, cookie)).response.status, 404);
+  const end = Date.now(), start = end - 10000;
+  const selection = { projectId: '300016', building: '2', entrance: '307', floor: '5', apartment: '3', floorCount: 9, rooms: 4, internalArea: 114.6, externalArea: 135.6, method: 'address', paymentMethod: 'mortgage', catalogVersion: 'mida-plans-2026-11-25' };
+  const payload = { startTime: { $timestamp: start }, endTime: { $timestamp: end }, totalDuration: 10000, totalDurationSeconds: 10, step1Duration: 6, step2Duration: 4, captchaDuration: 0, correctCaptchas: 0, incorrectCaptchas: 0, project: 'Lənkəran Yaşayış Kompleksi', selection };
+  const saved = await call('sessions/sales', 'POST', payload, cookie);
+  assert.equal(saved.response.status, 201);
+  const listed = await call('sessions/sales?email=student@example.com', 'GET', undefined, adminCookie);
+  const session = listed.data.sessions.find((item: { id: string }) => item.id === saved.data.id);
+  assert.deepEqual(session.selection, selection); assert.equal(session.email, 'student@example.com');
+  assert.equal((await call('sessions/sales', 'POST', { ...payload, email: 'other@example.com' }, cookie)).response.status, 403);
+});
 test('pinned admin UID rejects other Auth accounts and server limits repeated login attempts', async () => {
   const { auth } = adminServices();
   const other = await auth.createUser({ email: 'other@example.com', password });
