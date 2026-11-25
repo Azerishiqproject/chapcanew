@@ -1,3 +1,5 @@
+import { createDateChallenge, dateEntryParts, dateInputLength, enteredDate, DATE_PARTS } from '../src/lib/date-challenge';
+import { createPuzzleChallenge, PUZZLE, puzzleMatches, puzzlePosition } from '../src/lib/puzzle-challenge';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CAPTCHA_TYPES, canonicalDate, captchaSettingsErrors, defaultCaptchaSettings, matchesAnswer, normalizeCaptchaSettings, resolveCaptchaSettings } from '../src/lib/captcha-config';
@@ -74,4 +76,30 @@ test('Wrong answers, double callbacks, closing and returning never advance or er
   assert.ok(sequence.advance()); assert.equal(sequence.advance(), false); assert.equal(sequence.open(1), false);
   assert.ok(sequence.open(2)); now = 14000; assert.ok(sequence.answer(true)); sequence.advance();
   assert.equal(sequence.progress, 2); assert.equal(sequence.logs.length, 2); assert.equal(sequence.open(2), false);
+});
+
+test('Date variants prefill exactly one correct part or none, preserving configured leap-day values', () => {
+  for (const [random, fixed] of [[0, null], [.25, 'day'], [.5, 'month'], [.999, 'year']] as const) {
+    const challenge = createDateChallenge('29.02.2000', () => random);
+    assert.equal(challenge.fixed, fixed);
+    const input = DATE_PARTS.filter(part => part !== fixed).map(part => challenge.values[part]).join('');
+    assert.equal(input.length, dateInputLength(challenge)); assert.equal(enteredDate(challenge, input), '29/02/2000');
+    assert.equal(matchesAnswer('birthdate', enteredDate(challenge, input), challenge.expected), true);
+    const empty = dateEntryParts(challenge, '');
+    for (const part of DATE_PARTS) assert.equal(empty[part], part === fixed ? challenge.values[part] : '');
+  }
+  assert.throws(() => createDateChallenge('31/02/2000'));
+});
+test('Puzzle geometry clamps movement and uses the same tolerance at different screen widths', () => {
+  for (let value = 0; value < 1; value += .01) {
+    const challenge = createPuzzleChallenge(() => value);
+    assert.ok(challenge.x >= 110 && challenge.x + PUZZLE.size < PUZZLE.width);
+    assert.ok(challenge.y > 0 && challenge.y + PUZZLE.size < PUZZLE.height);
+    const position = challenge.x - PUZZLE.startX;
+    assert.ok(puzzleMatches(challenge, position + PUZZLE.tolerance));
+    assert.equal(puzzleMatches(challenge, position + PUZZLE.tolerance + .1), false);
+    for (const width of [180, 300, 600]) assert.ok(Math.abs(puzzlePosition(0, position / PUZZLE.travel * width, width) - position) < 1e-8);
+  }
+  assert.equal(puzzlePosition(0, -100, 300), 0); assert.equal(puzzlePosition(0, 500, 300), PUZZLE.travel);
+  assert.equal(puzzlePosition(5, 100, 0), 5); assert.equal(puzzleMatches({ x: 120, y: 60 }, NaN), false);
 });

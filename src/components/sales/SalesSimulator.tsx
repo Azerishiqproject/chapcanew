@@ -18,6 +18,7 @@ import DateCaptcha from '@/components/DateCaptcha';
 import NumberCaptcha from '@/components/NumberCaptcha';
 import TextCaptcha from '@/components/TextCaptcha';
 import BirthDateCaptcha from '@/components/BirthDateCaptcha';
+import PuzzleCaptcha from '@/components/PuzzleCaptcha';
 import PersonalInfoCaptcha from '@/components/PersonalInfoCaptcha';
 import SalesCompletion from './SalesCompletion';
 import styles from './sales.module.css';
@@ -86,7 +87,7 @@ export default function SalesSimulator() {
   useEffect(() => {
     if (!captchaOpen) return;
     const previous = document.activeElement as HTMLElement | null;
-    const input = dialog.current?.querySelector<HTMLElement>('input:not(:disabled)');
+    const input = dialog.current?.querySelector<HTMLElement>('input:not(:disabled), [role="slider"]:not([aria-disabled="true"])');
     (input ?? dialog.current?.querySelector<HTMLElement>('button:not(:disabled):not([aria-label="Bağla"])'))?.focus();
     return () => previous?.focus();
   }, [captchaOpen]);
@@ -175,6 +176,7 @@ export default function SalesSimulator() {
     const config = run.settings, key = `${progress}-${captchaKey}`;
     if (type === 'date') return <DateCaptcha key={key} correctDate={config.dateConfig.todayDate} onVerify={verify} />;
     if (type === 'birthdate') return <BirthDateCaptcha key={key} correctDate={config.dateConfig.birthDate} onVerify={verify} />;
+    if (type === 'puzzle') return <PuzzleCaptcha key={key} onVerify={verify} />;
     if (type === 'number') return <NumberCaptcha key={key} onVerify={verify} />;
     if (type === 'text') return <TextCaptcha key={key} onVerify={verify} />;
     return <PersonalInfoCaptcha key={key} type={type} correctAnswer={config.personalConfig[type]} onVerify={verify} />;

@@ -1,4 +1,4 @@
-export const CAPTCHA_TYPES = ['date', 'number', 'text', 'birthdate', 'fin', 'religion', 'favoriteCar'] as const;
+export const CAPTCHA_TYPES = ['date', 'number', 'text', 'birthdate', 'fin', 'religion', 'favoriteCar', 'puzzle'] as const;
 export type CaptchaType = typeof CAPTCHA_TYPES[number];
 export interface CaptchaState {
   allowedTypes: CaptchaType[];

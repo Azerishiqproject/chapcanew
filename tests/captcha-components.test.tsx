@@ -1,6 +1,8 @@
 import test, { before, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
+import PuzzleCaptcha from '../src/components/PuzzleCaptcha';
+import { DATE_PARTS, DATE_LABELS, createDateChallenge } from '../src/lib/date-challenge';
 import DateCaptcha from '../src/components/DateCaptcha';
 import BirthDateCaptcha from '../src/components/BirthDateCaptcha';
 import NumberCaptcha from '../src/components/NumberCaptcha';
@@ -18,6 +20,13 @@ let painted = '';
 before(async () => {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' });
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver, IS_REACT_ACT_ENVIRONMENT: true });
+  class TestPointerEvent extends dom.window.MouseEvent {
+    pointerId: number; isPrimary: boolean;
+    constructor(type: string, init: PointerEventInit = {}) { super(type, init); this.pointerId = init.pointerId ?? 1; this.isPrimary = init.isPrimary ?? true; }
+  }
+  Object.defineProperty(dom.window, 'PointerEvent', { value: TestPointerEvent });
+  const captured = new WeakMap<Element, number>();
+  Object.assign(dom.window.HTMLElement.prototype, { setPointerCapture(this: Element, id: number) { captured.set(this, id); }, hasPointerCapture(this: Element, id: number) { return captured.get(this) === id; }, releasePointerCapture(this: Element) { captured.delete(this); } });
   Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true });
   Object.defineProperty(dom.window.HTMLCanvasElement.prototype, 'getContext', { value: () => ({ createLinearGradient: () => ({ addColorStop() {} }), fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, save() {}, restore() {}, translate() {}, rotate() {}, fillText(text: string) { painted += text; } }) });
   ui = await import('@testing-library/react');
@@ -28,6 +37,7 @@ function enterDigits(view: ReturnType<typeof ui.render>, digits: string) { for (
 for (const [label, Component] of [['date', DateCaptcha], ['birthdate', BirthDateCaptcha]] as const) {
   test(`${label} emits one wrong result, ignores rerenders, retries and accepts the configured date once`, context => {
     context.mock.timers.enable({ apis: ['setTimeout'] });
+    context.mock.method(Math, 'random', () => 0);
     const answers: boolean[] = [];
     const view = ui.render(<Component correctDate="29.02.2000" onVerify={value => answers.push(value)} />);
     enterDigits(view, '28022000'); assert.deepEqual(answers, [false]);
@@ -123,4 +133,70 @@ test('Late settings for a previous account cannot overwrite new-user defaults', 
   assert.equal((view.getByRole('switch') as HTMLInputElement).checked, true);
   assert.equal((view.getByRole('slider') as HTMLInputElement).value, '1');
   assert.equal(store.getState().captcha.enabled, true); assert.deepEqual(store.getState().captcha.allowedTypes, ['date', 'number', 'text', 'birthdate']);
+});
+
+for (const [random, fixed] of [[.25, 'day'], [.5, 'month'], [.75, 'year']] as const) for (const [label, Component] of [['date', DateCaptcha], ['birthdate', BirthDateCaptcha]] as const) {
+  test(`${label} fills ${fixed}, skips it during entry and preserves it on clear/backspace`, context => {
+    context.mock.method(Math, 'random', () => random);
+    const answers: boolean[] = [], expected = createDateChallenge('29/02/2000', () => random);
+    const view = ui.render(<Component correctDate="29/02/2000" onVerify={value => answers.push(value)} />);
+    const fixedGroup = view.getByRole('group', { name: `${DATE_LABELS[fixed]}, hazır` });
+    assert.ok(fixedGroup.textContent?.includes(expected.values[fixed]));
+    const digits = DATE_PARTS.filter(part => part !== fixed).map(part => expected.values[part]).join('');
+    enterDigits(view, digits.slice(0, 2)); ui.fireEvent.click(view.getByRole('button', { name: 'Təmizlə' }));
+    assert.ok(fixedGroup.textContent?.includes(expected.values[fixed])); assert.deepEqual(answers, []);
+    enterDigits(view, digits.slice(0, -1)); ui.fireEvent.click(view.getByRole('button', { name: 'Geri sil' }));
+    enterDigits(view, digits.slice(-2)); assert.deepEqual(answers, [true]);
+  });
+}
+function puzzleFixture(onVerify: (correct: boolean) => void, width = 350) {
+  const view = ui.render(<PuzzleCaptcha onVerify={onVerify} />), slider = view.getByRole('slider');
+  slider.parentElement!.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, bottom: 50, right: width, width, height: 50, toJSON() {} });
+  return { view, slider };
+}
+test('Puzzle checks only on release, counts a wrong drop once and retries with a working slider', context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] }); context.mock.method(Math, 'random', () => 0);
+  const answers: boolean[] = [], { view, slider } = puzzleFixture(value => answers.push(value));
+  ui.fireEvent.pointerDown(slider, { pointerId: 1, clientX: 10, button: 0 });
+  ui.fireEvent.pointerMove(slider, { pointerId: 1, clientX: 112 }); assert.deepEqual(answers, []);
+  ui.fireEvent.pointerUp(slider, { pointerId: 1, clientX: 200 });
+  ui.fireEvent.pointerUp(slider, { pointerId: 1, clientX: 200 }); assert.deepEqual(answers, [false]);
+  assert.ok(view.getByRole('alert'));
+  ui.act(() => context.mock.timers.tick(1500)); assert.equal(slider.getAttribute('aria-valuenow'), '0');
+  ui.fireEvent.pointerDown(slider, { pointerId: 2, clientX: 10, button: 0 });
+  ui.fireEvent.pointerUp(slider, { pointerId: 2, clientX: 112 }); assert.deepEqual(answers, [false, true]);
+  ui.fireEvent.lostPointerCapture(slider, { pointerId: 2 }); assert.equal(slider.getAttribute('aria-disabled'), 'true');
+});
+test('Puzzle cancellation, track clicks and second pointers do not submit; pointer math scales with width', context => {
+  context.mock.method(Math, 'random', () => 0);
+  const answers: boolean[] = [], { slider } = puzzleFixture(value => answers.push(value), 230);
+  ui.fireEvent.pointerDown(slider.parentElement!, { clientX: 110 }); ui.fireEvent.pointerUp(slider.parentElement!, { clientX: 110 });
+  ui.fireEvent.pointerDown(slider, { pointerId: 1, clientX: 10, button: 0 }); ui.fireEvent.pointerUp(slider, { pointerId: 1, clientX: 10 });
+  ui.fireEvent.pointerDown(slider, { pointerId: 2, clientX: 10, button: 0 }); ui.fireEvent.pointerMove(slider, { pointerId: 2, clientX: 70 });
+  ui.fireEvent.pointerCancel(slider, { pointerId: 2 }); assert.deepEqual(answers, []); assert.equal(slider.getAttribute('aria-valuenow'), '0');
+  ui.fireEvent.pointerDown(slider, { pointerId: 3, clientX: 10, button: 0 });
+  ui.fireEvent.pointerDown(slider, { pointerId: 4, clientX: 110, button: 0, isPrimary: false });
+  ui.fireEvent.pointerUp(slider, { pointerId: 4, clientX: 110 }); assert.deepEqual(answers, []);
+  ui.fireEvent.pointerUp(slider, { pointerId: 3, clientX: 71.2 }); assert.deepEqual(answers, [true]);
+});
+test('Puzzle supports keyboard movement and confirms just once', context => {
+  context.mock.method(Math, 'random', () => 0);
+  const answers: boolean[] = [], { slider } = puzzleFixture(value => answers.push(value));
+  ui.fireEvent.keyDown(slider, { key: 'Enter' }); assert.deepEqual(answers, []);
+  for (let i = 0; i < 34; i++) ui.fireEvent.keyDown(slider, { key: 'ArrowRight' });
+  ui.fireEvent.keyDown(slider, { key: 'Enter' }); ui.fireEvent.keyDown(slider, { key: 'Enter' }); assert.deepEqual(answers, [true]);
+});
+test('Puzzle type round-trips through user settings without requiring date or personal answers', async context => {
+  const config = defaultCaptchaSettings(); config.allowedTypes = ['puzzle'];
+  config.dateConfig = { todayDate: '', birthDate: '' }; config.personalConfig = { fin: '', religion: '', favoriteCar: '' };
+  const writes: typeof config[] = [];
+  context.mock.method(globalThis, 'fetch', async (_input: unknown, init?: RequestInit) => {
+    if (init?.method === 'PUT') { writes.push(JSON.parse(init.body as string)); return Response.json({ ok: true }); }
+    return Response.json({ settings: config });
+  });
+  const view = ui.render(<Provider store={settingsStore()}><CaptchaSettingsPanel /></Provider>);
+  await ui.waitFor(() => assert.equal((view.getByRole('button', { name: 'Yadda saxla' }) as HTMLButtonElement).disabled, false));
+  assert.equal((view.getByRole('checkbox', { name: 'Şəkil sürüşdürmə Captcha' }) as HTMLInputElement).checked, true);
+  ui.fireEvent.click(view.getByRole('button', { name: 'Yadda saxla' }));
+  await ui.waitFor(() => assert.equal(writes.length, 1)); assert.deepEqual(writes[0].allowedTypes, ['puzzle']);
 });

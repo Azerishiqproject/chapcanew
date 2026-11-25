@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { matchesAnswer, dateText } from '@/lib/captcha-config';
+import { createDateChallenge, dateEntryParts, dateInputLength, enteredDate, DATE_PARTS, DATE_LABELS, DATE_WIDTHS } from '@/lib/date-challenge';
 import { useCaptchaFeedback } from './useCaptchaFeedback';
 
 function keypad() {
@@ -9,9 +10,9 @@ function keypad() {
   return [...digits.slice(0, 9), 'backspace', digits[9], 'clear'];
 }
 function newNumber() { return Math.floor(100000 + Math.random() * 900000).toString(); }
-const DigitBox = ({ value }: { value: string }) => (
+const DigitBox = ({ value, fixed = false }: { value: string; fixed?: boolean }) => (
     <div className="flex flex-col items-center">
-      <div className="w-8 h-11 bg-white border border-gray-200 rounded-lg shadow-sm flex items-center justify-center text-[17px] font-black text-gray-800 relative italic">
+      <div className={`w-8 h-11 border rounded-lg shadow-sm flex items-center justify-center text-[17px] font-black relative italic ${fixed ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-800'}`}>
         {value ? value : <span className="absolute bottom-2 text-gray-300 font-normal italic text-sm">_</span>}
       </div>
     </div>
@@ -19,20 +20,22 @@ const DigitBox = ({ value }: { value: string }) => (
 
 interface Props { mode: 'date' | 'birthdate' | 'number'; correctDate?: string; onVerify?: (correct: boolean) => void }
 export default function NumericCaptcha({ mode, correctDate, onVerify }: Props) {
+  const makeDate = () => mode === 'number' ? null : createDateChallenge(correctDate || (mode === 'date' ? dateText() : '25/08/1990'));
+  const [challenge, setChallenge] = useState(makeDate);
   const [input, setInput] = useState('');
   const [target, setTarget] = useState(newNumber);
   const [keypadLayout, setKeypad] = useState(keypad);
-  const { blocked, error, submit, clearError } = useCaptchaFeedback(onVerify, () => { setInput(''); setTarget(newNumber()); setKeypad(keypad()); });
-  const day = input.slice(0, 2), month = input.slice(2, 4), year = input.slice(4, 8);
+  const { blocked, error, submit, clearError } = useCaptchaFeedback(onVerify, () => { setInput(''); setTarget(newNumber()); setKeypad(keypad()); setChallenge(makeDate()); });
+  const parts = challenge ? dateEntryParts(challenge, input) : null;
   function handleClear() { if (!blocked) { setInput(''); clearError(); } }
   function handleBackspace() { if (!blocked) { setInput(value => value.slice(0, -1)); clearError(); } }
   function handleNumberClick(digit: string) {
-    const length = mode === 'number' ? 6 : 8;
+    const length = challenge ? dateInputLength(challenge) : 6;
     if (blocked || input.length >= length) return;
     const next = input + digit; setInput(next); clearError();
     if (next.length !== length) return;
-    const entered = mode === 'number' ? next : `${next.slice(0, 2)}/${next.slice(2, 4)}/${next.slice(4)}`;
-    const expected = mode === 'number' ? target : (correctDate || (mode === 'date' ? dateText() : '25/08/1990'));
+    const entered = challenge ? enteredDate(challenge, next) : next;
+    const expected = challenge?.expected ?? target;
     submit(matchesAnswer(mode, entered, expected), mode === 'number' ? 'Rəqəm düzgün daxil edilməyib' : 'Tarix düzgün daxil edilməyib');
   }
 
@@ -50,34 +53,10 @@ export default function NumericCaptcha({ mode, correctDate, onVerify }: Props) {
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 mb-5 relative z-10 shadow-sm mx-0.5">
         <div className="flex justify-between items-end gap-1.5 px-0">
           {mode === 'number' ? <div className="flex justify-center w-full gap-1">{Array.from({ length: 6 }, (_, i) => <DigitBox key={i} value={input[i]} />)}</div> : <>
-          {/* Gün */}
-          <div className="flex flex-col items-center flex-1">
-            <div className="flex gap-1">
-              <DigitBox value={day[0]} />
-              <DigitBox value={day[1]} />
-            </div>
-            <span className="text-[8px] text-gray-400 mt-1 font-bold uppercase tracking-widest">Gün</span>
-          </div>
-
-          {/* Ay */}
-          <div className="flex flex-col items-center flex-1 border-x border-gray-100 px-1">
-            <div className="flex gap-1">
-              <DigitBox value={month[0]} />
-              <DigitBox value={month[1]} />
-            </div>
-            <span className="text-[8px] text-gray-400 mt-1 font-bold uppercase tracking-widest">Ay</span>
-          </div>
-
-          {/* İl */}
-          <div className="flex flex-col items-center flex-[1.4]">
-            <div className="flex gap-1">
-              <DigitBox value={year[0]} />
-              <DigitBox value={year[1]} />
-              <DigitBox value={year[2]} />
-              <DigitBox value={year[3]} />
-            </div>
-            <span className="text-[8px] text-gray-400 mt-1 font-bold uppercase tracking-widest">İl</span>
-          </div>
+          {DATE_PARTS.map(part => <div key={part} role="group" aria-label={`${DATE_LABELS[part]}${challenge?.fixed === part ? ', hazır' : ''}`} className={`flex flex-col items-center ${part === 'year' ? 'flex-[1.4]' : 'flex-1'} ${part === 'month' ? 'border-x border-gray-100 px-1' : ''}`}>
+            <div className="flex gap-1">{Array.from({ length: DATE_WIDTHS[part] }, (_, i) => <DigitBox key={i} value={parts?.[part][i] ?? ''} fixed={challenge?.fixed === part} />)}</div>
+            <span className={`text-[8px] mt-1 font-bold uppercase tracking-widest ${challenge?.fixed === part ? 'text-emerald-600' : 'text-gray-400'}`}>{DATE_LABELS[part]}{challenge?.fixed === part ? ' · hazır' : ''}</span>
+          </div>)}
           </>}
         </div>
 
@@ -88,6 +67,7 @@ export default function NumericCaptcha({ mode, correctDate, onVerify }: Props) {
         )}
       </div>
 
+      {challenge?.fixed && <p className="text-[11px] text-emerald-700 mb-3 px-1" role="status">{DATE_LABELS[challenge.fixed]} hazırdır. Qalan sahələri doldurun.</p>}
       {/* Keypad */}
       <div className="grid grid-cols-3 gap-2.5 relative z-10 mt-1">
         {keypadLayout.flat().map((key, idx) => {

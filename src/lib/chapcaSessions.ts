@@ -1,8 +1,9 @@
 import { Timestamp } from 'firebase/firestore';
 import { api, errorMessage, type PageCursor } from './api-client';
 
+export type ChapcaType = 'tarih' | 'dogum' | 'text' | 'rakam' | 'puzzle';
 export interface ChapcaAttempt {
-  type: 'tarih' | 'dogum' | 'text' | 'rakam';
+  type: ChapcaType;
   startTime: Timestamp;
   endTime: Timestamp;
   duration: number; // milisaniye cinsinden

@@ -7,8 +7,10 @@ import { logoutUser } from '@/store/slices/authSlice';
 import DateCaptcha from '@/components/DateCaptcha';
 import BirthDateCaptcha from '@/components/BirthDateCaptcha';
 import TextCaptcha from '@/components/TextCaptcha';
+import PuzzleCaptcha from '@/components/PuzzleCaptcha';
+import { canonicalDate } from '@/lib/captcha-config';
 import NumberCaptcha from '@/components/NumberCaptcha';
-import { saveChapcaSession, ChapcaAttempt } from '@/lib/chapcaSessions';
+import { saveChapcaSession, ChapcaAttempt, type ChapcaType } from '@/lib/chapcaSessions';
 import { Timestamp } from 'firebase/firestore';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { FaCheck, FaCalendarDay, FaBirthdayCake, FaFont, FaHashtag } from 'react-icons/fa';
@@ -18,7 +20,7 @@ export default function ChapcaPage() {
   const { user, isAuthenticated, isLoading } = useAppSelector((state) => state.auth);
   const router = useRouter();
   const [showSettings, setShowSettings] = useState(false);
-  const [selectedChapcas, setSelectedChapcas] = useState<('tarih' | 'dogum' | 'text' | 'rakam')[]>([]);
+  const [selectedChapcas, setSelectedChapcas] = useState<ChapcaType[]>([]);
   const [correctDate, setCorrectDate] = useState<string>('');
   const [correctBirthDate, setCorrectBirthDate] = useState<string>('');
   const [isStarted, setIsStarted] = useState(false);
@@ -34,13 +36,14 @@ export default function ChapcaPage() {
     dogum: { count: 1 },
     text: { count: 1 },
     rakam: { count: 1 },
+    puzzle: { count: 1 },
   });
 
   // Genel sıralama ayarı
   const [globalOrder, setGlobalOrder] = useState<'random' | 'sequential'>('sequential');
 
   // Gerçek oynanacak chapca listesi (ayarlara göre çoğaltılmış)
-  const [playableChapcas, setPlayableChapcas] = useState<('tarih' | 'dogum' | 'text' | 'rakam')[]>([]);
+  const [playableChapcas, setPlayableChapcas] = useState<ChapcaType[]>([]);
 
   // Oturum takibi
   const [sessionStartTime, setSessionStartTime] = useState<Timestamp | null>(null);
@@ -148,8 +151,13 @@ export default function ChapcaPage() {
     }
   };
 
+  const handlePuzzleVerify = (isCorrect: boolean) => {
+    recordChapcaAttempt('puzzle', isCorrect, isCorrect && currentChapcaIndex === playableChapcas.length - 1);
+    if (isCorrect) handleNextChapca();
+  };
+
   // Chapca denemesini kaydet
-  const recordChapcaAttempt = (type: 'tarih' | 'dogum' | 'text' | 'rakam', isCorrect: boolean, isLastChapca: boolean = false) => {
+  const recordChapcaAttempt = (type: ChapcaType, isCorrect: boolean, isLastChapca: boolean = false) => {
     if (!currentChapcaStartTime) return;
 
     const endTime = Timestamp.now();
@@ -257,7 +265,7 @@ export default function ChapcaPage() {
     setCorrectBirthDate(value);
   };
 
-  const toggleChapcaSelection = (type: 'tarih' | 'dogum' | 'text' | 'rakam') => {
+  const toggleChapcaSelection = (type: ChapcaType) => {
     setSelectedChapcas(prev => {
       if (prev.includes(type)) {
         return prev.filter(t => t !== type);
@@ -273,18 +281,18 @@ export default function ChapcaPage() {
       return;
     }
 
-    if (selectedChapcas.includes('tarih') && !correctDate) {
+    if (selectedChapcas.includes('tarih') && !canonicalDate(correctDate)) {
       alert('Please set today\'s date in settings');
       return;
     }
 
-    if (selectedChapcas.includes('dogum') && !correctBirthDate) {
+    if (selectedChapcas.includes('dogum') && !canonicalDate(correctBirthDate)) {
       alert('Please set birth date in settings');
       return;
     }
 
     // Seçilen chapcaları ayarlara göre çoğalt
-    const newPlayableChapcas: ('tarih' | 'dogum' | 'text' | 'rakam')[] = [];
+    const newPlayableChapcas: ChapcaType[] = [];
 
     if (globalOrder === 'sequential') {
       // Sıralı mod: Seçim sırasına göre, her chapca'nın tüm tekrarları peş peşe
@@ -595,6 +603,7 @@ export default function ChapcaPage() {
                     if (type === 'dogum') return '🎂 Doğum Tarixi';
                     if (type === 'text') return '🔤 Mətn Chapca';
                     if (type === 'rakam') return '🔢 Rəqəm Chapca';
+                    if (type === 'puzzle') return '🧩 Şəkil sürüşdürmə';
                     return '';
                   }).join(', ')}
                 </p>
@@ -732,13 +741,21 @@ export default function ChapcaPage() {
                   </p>
                 </div>
               </div>
+              <button type="button" onClick={() => toggleChapcaSelection('puzzle')} aria-pressed={selectedChapcas.includes('puzzle')}
+                className={`relative rounded-xl border-2 bg-white p-8 text-center shadow-lg transition-all hover:shadow-xl dark:bg-gray-800 ${selectedChapcas.includes('puzzle') ? 'border-indigo-500 dark:border-indigo-400' : 'border-gray-200 dark:border-gray-700'}`}>
+                {selectedChapcas.includes('puzzle') && <span className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500"><FaCheck className="h-5 w-5 text-white" /></span>}
+                <span className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-4xl">🧩</span>
+                <span className="mb-2 block text-2xl font-bold text-gray-900 dark:text-white">Şəkil sürüşdürmə</span>
+                <span className="mb-4 block text-gray-600 dark:text-gray-400">Oxu mouse ilə çəkərək şəkil parçasını boşluğa yerləşdirin.</span>
+                <span className="text-sm font-medium text-green-600 dark:text-green-400">✓ Hər cəhddə yeni boşluq</span>
+              </button>
             </div>
 
             {/* Start Button */}
             <div className="flex justify-center">
               <button
                 onClick={handleStart}
-                disabled={selectedChapcas.length === 0 || (selectedChapcas.includes('tarih') && !correctDate) || (selectedChapcas.includes('dogum') && !correctBirthDate)}
+                disabled={selectedChapcas.length === 0 || (selectedChapcas.includes('tarih') && !canonicalDate(correctDate)) || (selectedChapcas.includes('dogum') && !canonicalDate(correctBirthDate))}
                 className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed text-lg"
               >
                 Start
@@ -840,6 +857,8 @@ export default function ChapcaPage() {
                         key={`text-${currentChapcaIndex}-${textCaptchaKey}`}
                         onVerify={handleTextVerify}
                       />
+                    ) : playableChapcas[currentChapcaIndex] === 'puzzle' ? (
+                      <PuzzleCaptcha key={`puzzle-${currentChapcaIndex}`} onVerify={handlePuzzleVerify} />
                     ) : (
                       <NumberCaptcha
                         key={`rakam-${currentChapcaIndex}-${numberCaptchaKey}`}
@@ -1101,6 +1120,12 @@ export default function ChapcaPage() {
                     </div>
                   </div>
                 )}
+                {selectedChapcas.includes('puzzle') && <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-600 dark:bg-gray-700/50">
+                  <h4 className="mb-3 text-lg font-semibold text-gray-900 dark:text-white">🧩 Şəkil sürüşdürmə</h4>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Repeat Count
+                    <input type="number" min={1} max={10} value={chapcaSettings.puzzle.count} onChange={event => setChapcaSettings(previous => ({ ...previous, puzzle: { count: Math.max(1, Math.min(10, Number(event.target.value) || 1)) } }))} className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white" />
+                  </label>
+                </div>}
               </div>
 
               {/* Genel Sıralama Ayarı */}

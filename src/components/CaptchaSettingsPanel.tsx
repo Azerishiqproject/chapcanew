@@ -104,7 +104,8 @@ function SettingsForm({ uid, onStatusChange }: { uid: string; onStatusChange?: (
                 { id: 'birthdate' as CaptchaType, label: 'Doğum Tarixi Captcha' },
                 { id: 'fin' as CaptchaType, label: 'FİN / İdentifikasiya Captcha' },
                 { id: 'religion' as CaptchaType, label: 'Din Captcha' },
-                { id: 'favoriteCar' as CaptchaType, label: 'Sevimli Maşın Captcha' }
+                { id: 'favoriteCar' as CaptchaType, label: 'Sevimli Maşın Captcha' },
+                { id: 'puzzle' as CaptchaType, label: 'Şəkil sürüşdürmə Captcha' }
               ].map(item => (
                 <label key={item.id} className="flex items-center gap-3 p-3 border border-gray-100 rounded-sm cursor-pointer hover:bg-gray-50 transition-colors group">
                   <input

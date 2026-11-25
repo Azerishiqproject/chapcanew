@@ -32,6 +32,13 @@ Kontroller: `npm run test:sales`, `npm run test:auth`, Auth/Firestore emülatör
 
 Ayarlar kullanıcı kimliğiyle sunucudan yüklenir. Kayıt yoksa o güne ait yeni varsayılanlar kullanılır; önceki hesabın Redux ayarları devralınmaz. Kaydedilmemiş/geçersiz ayarlar satış başlatmayı engeller. Yeni tur ayarların sabit bir kopyasını kullanır; başka sekmede yapılan değişiklikler bir sonraki tura uygulanır. Etkin seçili tarih/kişisel cevap alanları istemci ve sunucuda aynı kurallarla doğrulanır. Geçersiz eski ayarlar ayar ekranından düzeltilebilir; bozuk cevapla tur başlatılmaz.
 
-Yedi CAPTCHA bileşeni hem doğru hem yanlış cevabı bildirir. Bir giriş yalnızca bir kez bildirilir; ebeveyn ekranın yeniden çizilmesi cevap üretmez. Yanlış cevapta 1.5 saniye sonra giriş yenilenir, doğru cevapta sıra bir kez ilerler. Aktif çözüm süreleri kapanışlar arasında birikir. Tarih biçimleri normalleştirilir ve gerçek takvim günü kontrol edilir. İngilizce metin kodları ile Azerice kişisel cevapların büyük/küçük harf karşılaştırmaları ayrı yapılır.
+Sekiz CAPTCHA türünün bileşenleri hem doğru hem yanlış cevabı bildirir. Bir giriş yalnızca bir kez bildirilir; ebeveyn ekranın yeniden çizilmesi cevap üretmez. Yanlış cevapta 1.5 saniye sonra giriş yenilenir, doğru cevapta sıra bir kez ilerler. Aktif çözüm süreleri kapanışlar arasında birikir. Tarih biçimleri normalleştirilir ve gerçek takvim günü kontrol edilir. İngilizce metin kodları ile Azerice kişisel cevapların büyük/küçük harf karşılaştırmaları ayrı yapılır.
 
 `npm run test:captcha` bileşenleri, ayar formunu, hesap değişimi yarışını ve sıra modelini test eder. Emülatör entegrasyon testi ayrıca ayar sahipliğini, kalıcılığı, geçersiz kaydın reddini ve tur toplamını doğrular.
+
+
+## Hazır tarih alanları ve resim sürükleme
+
+Tarih ve doğum tarihi CAPTCHA'larında her yeni kontrolde boş giriş, hazır gün, hazır ay veya hazır yıl varyantlarından biri eşit olasılıkla seçilir. Hazır alan kayıtlı doğru tarihten gelir, yeşil görünür ve kullanıcı girişi o alanı atlar. Geri sil/temizle yalnızca kullanıcı girdisini değiştirir. Tamamlanan tarih tüm alanlarla birlikte doğrulanır; yanlış cevap sonrası yeni bir varyant gelir.
+
+`Şəkil sürüşdürmə Captcha` ayarlarda isteğe bağlı yeni bir türdür. Yerel bir SVG resmin 44 × 44 mantıksal piksel karesi, başlangıçta boşluğun solundadır. Alttaki ok tutamacı parçayı yatay taşır. Yalnızca bırakma anında konum kontrol edilir; tolerans 360 piksel resim koordinatında ±5 pikseldir. Farklı ekranlarda hareket bu koordinata ölçeklenir. İptal, ikinci pointer ve hareket etmeyen tıklama cevap sayılmaz. Yanlış bırakma tek hata sayılır, 1.5 saniye sonra yeni konumla tekrar denenir. Klavye ile oklar ve Enter/boşluk da desteklenir. Bu tür ayrı CAPTCHA antrenmanına ve o antrenmanın tekrar sayısı/kayıt akışına da dahildir. Resim uygulamayla gelir; harici resim servisi gerekmez.

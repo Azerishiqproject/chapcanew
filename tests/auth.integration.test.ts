@@ -293,6 +293,20 @@ test('CAPTCHA settings persist per owner, validate enabled answers, and feed the
   await db.collection('captchaSettings').doc(other.data.user.uid).delete();
   assert.equal((await call(`captcha-settings/${other.data.user.uid}`, 'GET', undefined, otherCookie)).data.settings, null);
 });
+test('picture puzzle settings and standalone attempt history are accepted without changing legacy records', async () => {
+  const login = await call('auth/login', 'POST', { email: 'isolated@example.com', password });
+  const cookie = cookieFrom(login.response, USER_COOKIE), uid = login.data.user.uid;
+  const config = { enabled: true, requiredCount: 3, allowedTypes: ['puzzle'], dateConfig: { todayDate: '', birthDate: '' }, personalConfig: { fin: '', religion: '', favoriteCar: '' } };
+  assert.equal((await call(`captcha-settings/${uid}`, 'PUT', config, cookie)).response.status, 200);
+  const settings = (await call(`captcha-settings/${uid}`, 'GET', undefined, cookie)).data.settings;
+  assert.deepEqual(captchaPlan(settings.enabled, settings.requiredCount, settings.allowedTypes).map(item => item.type), ['puzzle', 'puzzle', 'puzzle']);
+  const end = Date.now(), start = end - 5000;
+  const body = { startTime: { $timestamp: start }, endTime: { $timestamp: end }, totalDuration: 5000, totalDurationSeconds: 5, chapcas: [{ type: 'puzzle', startTime: { $timestamp: start }, endTime: { $timestamp: end }, duration: 5000, durationSeconds: 5, isCorrect: true }] };
+  const saved = await call('sessions/chapca', 'POST', body, cookie);
+  assert.equal(saved.response.status, 201);
+  const list = await call('sessions/chapca?email=isolated@example.com', 'GET', undefined, adminCookie);
+  assert.equal(list.data.sessions.find((item: { id: string }) => item.id === saved.data.id).chapcas[0].type, 'puzzle');
+});
 test('pinned admin UID rejects other Auth accounts and server limits repeated login attempts', async () => {
   const { auth } = adminServices();
   const other = await auth.createUser({ email: 'other@example.com', password });

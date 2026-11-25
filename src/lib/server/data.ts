@@ -50,7 +50,7 @@ export function sessionFields(kind: SessionKind, input: Record<string, unknown>)
     if (!Array.isArray(input.chapcas) || input.chapcas.length > 300) throw new ApiError(400, 'Geçersiz CAPTCHA listesi.');
     result.chapcas = input.chapcas.map((value) => {
       const attempt = record(value);
-      if (!['tarih', 'dogum', 'text', 'rakam'].includes(String(attempt.type)) || typeof attempt.isCorrect !== 'boolean') {
+      if (!['tarih', 'dogum', 'text', 'rakam', 'puzzle'].includes(String(attempt.type)) || typeof attempt.isCorrect !== 'boolean') {
         throw new ApiError(400, 'Geçersiz CAPTCHA sonucu.');
       }
       return { ...times(attempt), type: attempt.type, isCorrect: attempt.isCorrect, duration: number(attempt.duration), durationSeconds: number(attempt.durationSeconds) };
