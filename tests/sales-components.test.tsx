@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import SalesAddressFields from '../src/components/sales/SalesAddressFields';
 import SalesAnalyticsPanel from '../src/components/SalesAnalyticsPanel';
-import { emptyAddress } from '../src/lib/sales-catalog';
+import { addressOptions, changeAddress, emptyAddress, salesCatalog, type SalesAddress } from '../src/lib/sales-catalog';
 import { summarizeSalesSessions } from '../src/lib/sales-analytics';
 let ui: typeof import('@testing-library/react');
 before(async () => { const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' }); Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver, IS_REACT_ACT_ENVIRONMENT: true }); Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true }); ui = await import('@testing-library/react'); });
@@ -20,15 +20,53 @@ test('Native selects retain the same nodes/options across unrelated updates and 
   view.rerender(<SalesAddressFields {...props} address={{ ...props.address, entrance: '305', floor: '', apartment: '' }} />);
   assert.equal(apartment.disabled, true); assert.equal(apartment.value, ''); assert.equal((view.getByLabelText('Mərtəbə nömrəsi') as HTMLSelectElement).disabled, false);
 });
-test('Loading/errors never disable the building selector and become retryable rather than freezing all controls', () => {
-  const props = { rowClassName: 'row', address: { ...emptyAddress, projectId: '300016', building: '1' }, loading: true, error: '', onChange() {}, onFocus() {} };
+test('Only unavailable dependent options wait; loading or errors never lock locally ready choices', () => {
+  const address = { ...emptyAddress, projectId: '300016', building: '1' };
+  const building = { number: '1', floorCount: 9, complete: false, sectors: [], layouts: [] };
+  const props = { rowClassName: 'row', address, building, loading: true, error: '', onChange() {}, onFocus() {} };
   const view = ui.render(<SalesAddressFields {...props} />);
   assert.equal((view.getByLabelText('Bina nömrəsi') as HTMLSelectElement).disabled, false);
   assert.equal((view.getByLabelText('Giriş nömrəsi') as HTMLSelectElement).disabled, true);
+  assert.equal(view.getByLabelText('Giriş nömrəsi').getAttribute('aria-busy'), 'true');
   view.rerender(<SalesAddressFields {...props} loading={false} error="unavailable" />);
   assert.equal((view.getByLabelText('Bina nömrəsi') as HTMLSelectElement).disabled, false);
-  view.rerender(<SalesAddressFields {...props} loading={false} address={{ ...props.address, building: '2' }} />);
-  assert.equal((view.getByLabelText('Giriş nömrəsi') as HTMLSelectElement).disabled, false);
+  // Even a pending or failed refresh cannot lock options that are already in the snapshot.
+  const ready = { ...emptyAddress, projectId: '300016', building: '2', entrance: '307', floor: '5' };
+  view.rerender(<SalesAddressFields {...props} building={undefined} address={ready} />);
+  const entrance = view.getByLabelText('Giriş nömrəsi') as HTMLSelectElement;
+  const options = [...entrance.options];
+  for (const error of ['', 'unavailable']) {
+    view.rerender(<SalesAddressFields {...props} building={undefined} address={ready} error={error} />);
+    for (const label of ['Bina nömrəsi', 'Giriş nömrəsi', 'Mərtəbə nömrəsi', 'Mənzil nömrəsi']) assert.equal((view.getByLabelText(label) as HTMLSelectElement).disabled, false);
+    assert.equal(view.getByLabelText('Giriş nömrəsi'), entrance);
+    assert.deepEqual([...entrance.options], options);
+  }
+});
+test('All four address selectors become usable immediately in every demo building and clear dependent choices', () => {
+  let address: SalesAddress = { ...emptyAddress };
+  const onChange = (field: keyof SalesAddress, value: string) => { address = changeAddress(address, field, value); };
+  const props = { rowClassName: 'row', loading: false, error: '', onChange, onFocus() {} };
+  const view = ui.render(<SalesAddressFields {...props} address={address} />);
+  for (const project of salesCatalog.projects) for (const building of project.buildings.filter(item => item.layouts.length > 0)) {
+    address = { ...emptyAddress, projectId: project.id };
+    view.rerender(<SalesAddressFields {...props} address={address} />);
+    const choose = (label: string, value: string) => {
+      const select = view.getByLabelText(label) as HTMLSelectElement;
+      assert.equal(select.disabled, false, `${project.name} / ${building.number} / ${label}`);
+      ui.fireEvent.change(select, { target: { value } });
+      view.rerender(<SalesAddressFields {...props} address={address} />);
+      assert.equal(select.value, value);
+    };
+    choose('Bina nömrəsi', building.number);
+    choose('Giriş nömrəsi', addressOptions(address).entrances[0]);
+    choose('Mərtəbə nömrəsi', addressOptions(address).floors[0]);
+    choose('Mənzil nömrəsi', addressOptions(address).apartments[0]);
+    choose('Bina nömrəsi', '');
+    for (const label of ['Giriş nömrəsi', 'Mərtəbə nömrəsi', 'Mənzil nömrəsi']) {
+      const select = view.getByLabelText(label) as HTMLSelectElement;
+      assert.equal(select.disabled, true); assert.equal(select.value, '');
+    }
+  }
 });
 test('Admin shows all-history totals independent of displayed pages and reveals each run timeline', async context => {
   const stats = summarizeSalesSessions([{ totalDuration: 10000, step1Duration: 3, step2Duration: 7, captchaDuration: 1, correctCaptchas: 1, incorrectCaptchas: 1 }, { totalDuration: 20000, step1Duration: 5, step2Duration: 15, captchaDuration: 0, correctCaptchas: 0, incorrectCaptchas: 0 }, ...Array.from({ length: 23 }, () => ({ status: 'playing', schemaVersion: 2 }))]);

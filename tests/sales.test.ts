@@ -23,12 +23,28 @@ test('Every cached address resolves to its source record, with no duplicate buil
   for (const project of salesCatalog.projects) {
     assert.equal(new Set(project.buildings.map(b => b.number)).size, project.buildings.length);
     for (const building of project.buildings) for (const layout of building.layouts) for (const floor of layout.floors) for (const unit of layout.units) {
+      assert.equal(unit.length, 5);
+      assert.equal(typeof unit[0], 'string'); assert.equal(typeof unit[1], 'string');
+      assert.ok(unit.slice(2).every(value => typeof value === 'number' && Number.isFinite(value)));
       const address = { projectId: project.id, building: building.number, entrance: unit[0], floor: String(floor), apartment: unit[1] };
       const result = findApartment(address)!;
       assert.deepEqual([result.rooms, result.internalArea, result.externalArea], unit.slice(2));
       assert.ok(floor <= building.floorCount);
+      assert.ok(Number(unit[0]) > 0 && Number(unit[1]) > 0, 'Placeholder zero addresses must never be selectable');
     }
   }
+});
+test('Every selectable demo building is ready locally; empty official plans are not offered', async () => {
+  let requests = 0;
+  for (const project of salesCatalog.projects) for (const building of project.buildings) {
+    assert.equal(building.complete, true, `${project.name} / ${building.number} is not ready locally`);
+    assert.equal(addressOptions({ ...emptyAddress, projectId: project.id }).buildings.includes(building.number), building.layouts.length > 0);
+    const loaded = await fetchBuilding(project.id, building.number, async () => { requests++; throw new Error('Demo must not wait for external catalogue'); });
+    assert.equal(loaded, building);
+    const address = { ...emptyAddress, projectId: project.id, building: building.number };
+    assert.equal(addressOptions(address).entrances.length > 0, building.layouts.length > 0);
+  }
+  assert.equal(requests, 0);
 });
 test('Official loader groups identical floor plans and merges all building sectors without inventing units', async () => {
   const source = projectFor('300016')!.buildings.find(b => b.number === '1')!;

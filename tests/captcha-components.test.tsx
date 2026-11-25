@@ -149,6 +149,28 @@ for (const [random, fixed] of [[.25, 'day'], [.5, 'month'], [.75, 'year']] as co
     enterDigits(view, digits.slice(-2)); assert.deepEqual(answers, [true]);
   });
 }
+for (const random of [0, .25, .5, .75]) for (const [label, Component] of [['date', DateCaptcha], ['birthdate', BirthDateCaptcha]] as const) {
+  test(`${label} accepts the saved non-today date in variant ${random}, despite parent rerenders`, context => {
+    context.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 10, 25, 12) });
+    context.mock.method(Math, 'random', () => random);
+    const answers: boolean[] = [], expected = createDateChallenge('16/12/2026', () => random);
+    const view = ui.render(<Component correctDate="16.12.2026" onVerify={value => answers.push(value)} />);
+    if (label === 'date') {
+      assert.match(view.getByRole('heading').textContent!, /Təyin etdiyiniz tarixi/);
+      assert.match(view.getByRole('note').textContent!, /ayarlarda saxladığınız tarix/);
+    }
+    const editable = DATE_PARTS.filter(part => part !== expected.fixed);
+    assert.equal(view.getByRole('group', { name: DATE_LABELS[editable[0]], exact: true }).getAttribute('aria-current'), 'step');
+    const digits = editable.map(part => expected.values[part]).join('');
+    for (const digit of digits) {
+      ui.fireEvent.click(view.getByRole('button', { name: digit, exact: true }));
+      view.rerender(<Component correctDate="16.12.2026" onVerify={value => answers.push(value)} />);
+    }
+    assert.deepEqual(answers, [true]);
+    assert.equal(view.queryByRole('alert'), null);
+    for (const part of DATE_PARTS) assert.match(view.getByRole('group', { name: new RegExp(`^${DATE_LABELS[part]}`) }).textContent!, new RegExp(expected.values[part]));
+  });
+}
 function puzzleFixture(onVerify: (correct: boolean) => void, width = 350) {
   const view = ui.render(<PuzzleCaptcha onVerify={onVerify} />), slider = view.getByRole('slider');
   slider.parentElement!.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, bottom: 50, right: width, width, height: 50, toJSON() {} });

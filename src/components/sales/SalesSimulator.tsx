@@ -129,6 +129,7 @@ export default function SalesSimulator() {
     const request = ++catalogRequest.current; setCatalogLoading(true); setCatalogError(''); track({ type: 'catalog', projectId, building, status: 'loading' });
     try {
       const data = await api<{ building: CatalogBuilding }>(`sales/catalog/${encodeURIComponent(projectId)}/${encodeURIComponent(building)}`, 'GET', undefined, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
+      if (controller.signal.aborted || catalogRequest.current !== request) return;
       loadedBuildingsRef.current[key] = data.building; setLoadedBuildings({ ...loadedBuildingsRef.current }); track({ type: 'catalog', projectId, building, status: 'ready' });
     } catch (error) { if (!controller.signal.aborted) { track({ type: 'catalog', projectId, building, status: 'error' }); if (catalogRequest.current === request) setCatalogError(errorMessage(error)); } }
     finally { if (catalogRequest.current === request) setCatalogLoading(false); }

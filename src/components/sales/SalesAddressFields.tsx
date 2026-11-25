@@ -5,5 +5,21 @@ interface Props { rowClassName: string; address: SalesAddress; building?: Catalo
 /** Keep native select nodes and their options stable during unrelated timer/save updates. */
 export default memo(function SalesAddressFields({ rowClassName, address, building, loading, error, onChange, onFocus }: Props) {
   const options = useMemo(() => addressOptions(address, building), [address, building]);
-  return <>{([{ field: 'building', label: 'Bina nömrəsi', values: options.buildings, enabled: true }, { field: 'entrance', label: 'Giriş nömrəsi', values: options.entrances, enabled: !!address.building }, { field: 'floor', label: 'Mərtəbə nömrəsi', values: options.floors, enabled: !!address.entrance }, { field: 'apartment', label: 'Mənzil nömrəsi', values: options.apartments, enabled: !!address.floor }] as const).map(({ field, label, values, enabled }) => <label className={rowClassName} key={field}><span>{label}</span><select aria-label={label} value={address[field]} disabled={!enabled || (field !== 'building' && (loading || !!error))} onFocus={() => onFocus(field)} onChange={event => onChange(field, event.target.value)}><option value="" aria-label={loading && field === 'entrance' ? 'Yüklənir' : 'Seçin'}>{loading && field === 'entrance' ? '...' : ''}</option>{values.map(value => <option key={value} value={value}>{value}</option>)}</select></label>)}</>;
+  const fields = [
+    { field: 'building', label: 'Bina nömrəsi', values: options.buildings, enabled: true },
+    { field: 'entrance', label: 'Giriş nömrəsi', values: options.entrances, enabled: !!address.building },
+    { field: 'floor', label: 'Mərtəbə nömrəsi', values: options.floors, enabled: !!address.entrance },
+    { field: 'apartment', label: 'Mənzil nömrəsi', values: options.apartments, enabled: !!address.floor },
+  ] as const;
+  return <>{fields.map(({ field, label, values, enabled }) => {
+    // A background request must never lock options already available in the snapshot.
+    const waiting = field === 'entrance' && enabled && !values.length && loading;
+    return <label className={rowClassName} key={field}>
+      <span>{label}</span>
+      <select aria-label={label} aria-busy={waiting || undefined} title={enabled && !values.length ? error || (waiting ? 'Bina məlumatları yüklənir…' : undefined) : undefined} value={address[field]} disabled={!enabled || !values.length} onFocus={() => onFocus(field)} onChange={event => onChange(field, event.target.value)}>
+        <option value="" aria-label={waiting ? 'Yüklənir' : 'Seçin'}>{waiting ? '...' : ''}</option>
+        {values.map(value => <option key={value} value={value}>{value}</option>)}
+      </select>
+    </label>;
+  })}</>;
 });
