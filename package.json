@@ -4,9 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "setup:admin": "node --env-file=.env.local --import tsx scripts/create-admin.ts",
+    "test:auth": "tsx --test tests/security.test.ts",
+    "test:integration": "tsx --test tests/auth.integration.test.ts",
+    "test:aim": "tsx --test tests/aim.test.ts tests/aim-audio.test.ts tests/aim-training.test.ts"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.11.1",

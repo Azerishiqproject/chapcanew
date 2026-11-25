@@ -6,7 +6,8 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { logoutUser } from '@/store/slices/authSlice';
 import { getUserByEmail, User as UserType } from '@/lib/users';
 import { getUserChapcaSessions, ChapcaSession } from '@/lib/chapcaSessions';
-import { getUserAimSessions, AimSession } from '@/lib/aimSessions';
+import { getAimOverview, type AimOverview } from '@/lib/aimSessions';
+import AimAnalyticsPanel from '@/components/AimAnalyticsPanel';
 import { getUserSalesSessions, SalesSession } from '@/lib/salesSessions';
 import { Timestamp } from 'firebase/firestore';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -36,7 +37,7 @@ export default function UserDetailPage() {
 
   const [user, setUserData] = useState<UserType | null>(null);
   const [chapcaSessions, setChapcaSessions] = useState<(ChapcaSession & { id: string })[]>([]);
-  const [aimSessions, setAimSessions] = useState<(AimSession & { id: string })[]>([]);
+  const [aimOverview, setAimOverview] = useState<AimOverview | null>(null);
   const [salesSessions, setSalesSessions] = useState<(SalesSession & { id: string })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'info' | 'chapca' | 'aim' | 'sales'>('info');
@@ -89,13 +90,8 @@ export default function UserDetailPage() {
         setChapcaSessions(chapcaResult.sessions);
       }
 
-      // Load aim sessions
-      const aimResult = await getUserAimSessions(decodeURIComponent(userEmail));
-      if (aimResult.error) {
-        console.error('Error loading aim sessions:', aimResult.error);
-      } else {
-        setAimSessions(aimResult.sessions);
-      }
+      try { setAimOverview(await getAimOverview(decodeURIComponent(userEmail))); }
+      catch (error) { console.error('Aim overview could not be loaded:', error); }
 
       // Load sales sessions
       const salesResult = await getUserSalesSessions(decodeURIComponent(userEmail));
@@ -142,18 +138,6 @@ export default function UserDetailPage() {
     correctAttempts: chapcaSessions.reduce((sum, s) => sum + s.chapcas.filter(c => c.isCorrect).length, 0),
     wrongAttempts: chapcaSessions.reduce((sum, s) => sum + s.chapcas.filter(c => !c.isCorrect).length, 0),
     totalDuration: chapcaSessions.reduce((sum, s) => sum + (s.totalDuration || 0), 0),
-  };
-
-  const aimStats = {
-    totalSessions: aimSessions.length,
-    totalScore: aimSessions.reduce((sum, s) => sum + s.score, 0),
-    totalMisses: aimSessions.reduce((sum, s) => sum + s.misses, 0),
-    avgAccuracy: aimSessions.length > 0
-      ? aimSessions.reduce((sum, s) => sum + s.accuracy, 0) / aimSessions.length
-      : 0,
-    avgLevel: aimSessions.length > 0
-      ? aimSessions.reduce((sum, s) => sum + s.level, 0) / aimSessions.length
-      : 0,
   };
 
   const salesStats = {
@@ -291,12 +275,12 @@ export default function UserDetailPage() {
               {[
                 { id: 'info', label: 'Statistika', icon: Activity },
                 { id: 'chapca', label: `Security (${chapcaSessions.length})`, icon: ShieldCheck },
-                { id: 'aim', label: `Aim Trainer (${aimSessions.length})`, icon: Target },
+                { id: 'aim', label: `Direct Aim (${aimOverview?.totalPlays ?? 0})`, icon: Target },
                 { id: 'sales', label: `Sales (${salesSessions.length})`, icon: ShoppingCart }
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id as typeof activeTab)}
                   className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-[12px] font-black uppercase tracking-wider transition-all duration-300 ${activeTab === tab.id ? 'bg-[#00965e] text-white shadow-lg scale-[1.02]' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
                 >
                   <tab.icon size={16} />
@@ -343,19 +327,19 @@ export default function UserDetailPage() {
                     <div className="grid grid-cols-2 gap-3.5">
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                         <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">AVG Xal</span>
-                        <p className="text-xl font-black italic mt-1">{(aimStats.totalScore / (aimStats.totalSessions || 1)).toFixed(0)}</p>
+                        <p className="text-xl font-black italic mt-1">{aimOverview?.averageHits.toFixed(1) ?? '—'}</p>
                       </div>
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                         <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">AVG Dəqiqlik</span>
-                        <p className="text-xl font-black italic mt-1 text-[#4fbfa3]">{aimStats.avgAccuracy.toFixed(1)}%</p>
+                        <p className="text-xl font-black italic mt-1 text-[#4fbfa3]">{aimOverview?.accuracy.toFixed(1) ?? '—'}%</p>
                       </div>
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">AVG Səviyyə</span>
-                        <p className="text-xl font-black italic mt-1">{aimStats.avgLevel.toFixed(1)}</p>
+                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">Oyun sayı</span>
+                        <p className="text-xl font-black italic mt-1">{aimOverview?.totalPlays ?? '—'}</p>
                       </div>
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                         <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">Cəmi Miss</span>
-                        <p className="text-xl font-black italic mt-1 text-red-500">{aimStats.totalMisses}</p>
+                        <p className="text-xl font-black italic mt-1 text-red-500">{aimOverview?.totalMisses ?? '—'}</p>
                       </div>
                     </div>
                   </div>
@@ -447,52 +431,7 @@ export default function UserDetailPage() {
                 </div>
               )}
 
-              {/* Aim Trainer List */}
-              {activeTab === 'aim' && (
-                <div className="space-y-4">
-                  {aimSessions.length === 0 ? (
-                    <div className="bg-white/5 rounded-[40px] p-32 text-center border border-dashed border-white/10">
-                      <Search className="mx-auto mb-6 text-white/10" size={64} />
-                      <p className="text-white/20 font-black uppercase tracking-[6px]">Seans tapılmadı</p>
-                    </div>
-                  ) : (
-                    aimSessions.map((session) => (
-                      <div key={session.id} className="bg-white/5 rounded-[24px] border border-white/10 p-6 hover:bg-white/[0.08] hover:border-[#4fbfa3]/40 transition-all group relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-48 h-48 bg-[#4fbfa3]/5 rounded-full blur-[60px] -mr-24 -mt-24"></div>
-                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 relative z-10">
-                          <div className="flex items-center gap-6">
-                            <div className="w-14 h-14 rounded-2xl bg-[#4fbfa3]/20 flex items-center justify-center text-[#4fbfa3] group-hover:scale-110 transition-transform duration-500">
-                              <Target size={28} />
-                            </div>
-                            <div>
-                              <p className="text-white font-black text-xl tracking-tight">{formatDateTime(session.createdAt)}</p>
-                              <p className="text-[10px] font-black text-[#4fbfa3] uppercase tracking-[3px] mt-1 italic">{session.gameMode.toUpperCase()} REJİMİ</p>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 flex-1 max-w-xl">
-                            <div className="text-center">
-                              <span className="text-[9px] font-black text-white/20 uppercase tracking-[2px]">Xal</span>
-                              <p className="text-xl font-black italic text-white mt-1">{session.score}</p>
-                            </div>
-                            <div className="text-center">
-                              <span className="text-[9px] font-black text-white/20 uppercase tracking-[2px]">Dəqiqlik</span>
-                              <p className="text-xl font-black italic text-[#4fbfa3] mt-1">{session.accuracy.toFixed(1)}%</p>
-                            </div>
-                            <div className="text-center">
-                              <span className="text-[9px] font-black text-white/20 uppercase tracking-[2px]">Səviyyə</span>
-                              <p className="text-xl font-black italic text-white mt-1">{session.level}</p>
-                            </div>
-                            <div className="text-center">
-                              <span className="text-[9px] font-black text-white/20 uppercase tracking-[2px]">Səhv</span>
-                              <p className="text-xl font-black italic text-red-500 mt-1">{session.misses}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
+              {activeTab === 'aim' && <AimAnalyticsPanel email={decodeURIComponent(userEmail)} />}
 
               {/* Sales List */}
               {activeTab === 'sales' && (

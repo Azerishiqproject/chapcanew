@@ -1,248 +1,50 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { signIn } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/users';
-import { checkUserStatus } from '@/lib/admin';
-import type { UserStatus } from '@/lib/users';
-
-interface UserInfo {
-  uid: string;
-  email: string;
-}
+import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
+import { getSession, signIn, signOut, type SessionUser } from '@/lib/auth';
+import { errorMessage } from '@/lib/api-client';
 
 interface AuthState {
-  user: UserInfo | null;
-  userData: { status: UserStatus; name: string } | null;
+  user: { uid: string; email: string } | null;
+  userData: { status: 'admin' | 'user'; name: string } | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
   isLoading: boolean;
   error: string | null;
-  loginTime: number | null; // Timestamp of last login
 }
-
-const SESSION_TIMEOUT = 3600000; // 1 hour in ms
-
-const getStoredAuth = () => {
-  if (typeof window === 'undefined') return null;
-  const stored = localStorage.getItem('auth_session');
-  if (!stored) return null;
-  try {
-    const parsed = JSON.parse(stored);
-    const now = Date.now();
-    if (now - parsed.loginTime > SESSION_TIMEOUT) {
-      localStorage.removeItem('auth_session');
-      return null;
-    }
-    return parsed;
-  } catch (e) {
-    return null;
-  }
-};
-
-const storedAuth = getStoredAuth();
-
-const initialState: AuthState = storedAuth ? {
-  ...storedAuth,
-  isLoading: false,
-  error: null,
-} : {
-  user: null,
-  userData: null,
-  isAuthenticated: false,
-  isAdmin: false,
-  isLoading: false,
-  error: null,
-  loginTime: null,
-};
-
-// Async thunks
-export const loginUser = createAsyncThunk(
-  'auth/login',
-  async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
-    try {
-      // Firebase Authentication ile giriş yap
-      const { user, error } = await signIn(email, password);
-      if (error) {
-        return rejectWithValue(error);
-      }
-
-      if (!user || !user.email || !user.uid) {
-        return rejectWithValue('Kullanıcı bilgisi alınamadı');
-      }
-
-      // Firestore'dan kullanıcı bilgilerini çek
-      const { user: userData, error: userError } = await getUserByEmail(user.email);
-      if (userError || !userData) {
-        return rejectWithValue('Kullanıcı bilgileri bulunamadı');
-      }
-
-      return {
-        userInfo: {
-          uid: user.uid,
-          email: user.email,
-        },
-        userData,
-      };
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const logoutUser = createAsyncThunk(
-  'auth/logout',
-  async (_, { rejectWithValue }) => {
-    try {
-      return null;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-// Auth state değiştiğinde user bilgilerini Firestore'dan çek
-export const loadUserData = createAsyncThunk(
-  'auth/loadUserData',
-  async (email: string, { rejectWithValue }) => {
-    try {
-      const { user: userData, error: userError } = await getUserByEmail(email);
-      if (userError || !userData) {
-        return rejectWithValue('Kullanıcı bilgileri bulunamadı');
-      }
-      return userData;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-// Firestore'dan user status'unu güncelle
-export const refreshUserStatus = createAsyncThunk(
-  'auth/refreshStatus',
-  async (email: string, { rejectWithValue }) => {
-    try {
-      const status = await checkUserStatus(email);
-      if (!status) {
-        return rejectWithValue('Kullanıcı status bilgisi bulunamadı');
-      }
-      return status;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-const authSlice = createSlice({
-  name: 'auth',
-  initialState,
+const empty: Omit<AuthState, 'isLoading'> = { user: null, userData: null, isAuthenticated: false, isAdmin: false, error: null };
+const initialState: AuthState = { ...empty, isLoading: true };
+export const loginUser = createAsyncThunk('auth/login', async (input: { email: string; password: string }, { rejectWithValue }) => {
+  try { return await signIn(input.email, input.password); }
+  catch (error) { return rejectWithValue(errorMessage(error)); }
+});
+export const checkSession = createAsyncThunk('auth/checkSession', async () => {
+  try { return await getSession(); } catch { return null; }
+});
+export const logoutUser = createAsyncThunk('auth/logout', async (_, { rejectWithValue }) => {
+  try { await signOut(); } catch (error) { return rejectWithValue(errorMessage(error)); }
+});
+function applyUser(state: AuthState, user: SessionUser | null) {
+  state.isLoading = false;
+  state.user = user ? { uid: user.uid, email: user.email } : null;
+  state.userData = user ? { name: user.name, status: user.status } : null;
+  state.isAuthenticated = !!user;
+  state.isAdmin = user?.status === 'admin';
+}
+const slice = createSlice({
+  name: 'auth', initialState,
   reducers: {
-    setUser: (state, action: PayloadAction<{ uid: string; email: string } | null>) => {
-      state.user = action.payload;
-      state.isAuthenticated = !!action.payload;
-      if (!action.payload) {
-        state.userData = null;
-        state.isAdmin = false;
-      }
-    },
-    clearError: (state) => {
-      state.error = null;
-    },
-    checkSession: (state) => {
-      if (state.loginTime && Date.now() - state.loginTime > SESSION_TIMEOUT) {
-        state.user = null;
-        state.userData = null;
-        state.isAuthenticated = false;
-        state.isAdmin = false;
-        state.loginTime = null;
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('auth_session');
-        }
-      }
-    }
+    clearError(state) { state.error = null; },
+    clearSession(state) { Object.assign(state, empty, { isLoading: false }); },
   },
-  extraReducers: (builder) => {
+  extraReducers(builder) {
     builder
-      // Login
-      .addCase(loginUser.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
-      })
-      .addCase(loginUser.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.user = action.payload.userInfo;
-        state.userData = {
-          status: action.payload.userData.status,
-          name: action.payload.userData.name,
-        };
-        state.isAuthenticated = true;
-        state.isAdmin = action.payload.userData.status === 'admin';
-        state.loginTime = Date.now();
-
-        // Save to localStorage
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('auth_session', JSON.stringify({
-            user: state.user,
-            userData: state.userData,
-            isAuthenticated: true,
-            isAdmin: state.isAdmin,
-            loginTime: state.loginTime
-          }));
-        }
-      })
-      .addCase(loginUser.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload as string;
-        state.isAuthenticated = false;
-        state.user = null;
-        state.userData = null;
-        state.isAdmin = false;
-      })
-      // Logout
-      .addCase(logoutUser.pending, (state) => {
-        state.isLoading = true;
-      })
-      .addCase(logoutUser.fulfilled, (state) => {
-        state.isLoading = false;
-        state.user = null;
-        state.userData = null;
-        state.isAuthenticated = false;
-        state.isAdmin = false;
-        state.error = null;
-        state.loginTime = null;
-
-        // Clear localStorage
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('auth_session');
-        }
-      })
-      .addCase(logoutUser.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload as string;
-      })
-      // Load user data
-      .addCase(loadUserData.pending, (state) => {
-        state.isLoading = true;
-      })
-      .addCase(loadUserData.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.userData = {
-          status: action.payload.status,
-          name: action.payload.name,
-        };
-        state.isAdmin = action.payload.status === 'admin';
-      })
-      .addCase(loadUserData.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload as string;
-      })
-      // Refresh status
-      .addCase(refreshUserStatus.fulfilled, (state, action) => {
-        if (state.userData) {
-          state.userData.status = action.payload;
-          state.isAdmin = action.payload === 'admin';
-        }
-      });
+      .addCase(loginUser.pending, (state) => { state.isLoading = true; state.error = null; })
+      .addCase(loginUser.fulfilled, (state, action) => { applyUser(state, action.payload); })
+      .addCase(loginUser.rejected, (state, action) => { applyUser(state, null); state.error = action.payload as string; })
+      .addCase(checkSession.fulfilled, (state, action) => { applyUser(state, action.payload); })
+      .addCase(logoutUser.pending, (state) => { state.isLoading = true; })
+      .addCase(logoutUser.fulfilled, (state) => { applyUser(state, null); state.error = null; })
+      .addCase(logoutUser.rejected, (state, action) => { state.isLoading = false; state.error = action.payload as string; });
   },
 });
-
-export const { setUser, clearError, checkSession } = authSlice.actions;
-export default authSlice.reducer;
+export const { clearError, clearSession } = slice.actions;
+export default slice.reducer;

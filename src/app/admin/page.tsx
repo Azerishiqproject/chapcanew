@@ -13,8 +13,8 @@ import {
   resetUsers
 } from '@/store/slices/usersSlice';
 import type { User } from '@/lib/users';
-import { Timestamp } from 'firebase/firestore'; // Added Timestamp import
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { Timestamp } from 'firebase/firestore';
 import {
   UserPlus,
   Users as UsersIcon,
@@ -56,7 +56,7 @@ export default function AdminPage() {
     email: '',
     password: '',
     phone: '',
-    status: 'user' as 'admin' | 'user',
+    status: 'user' as const,
   });
 
   const [mounted, setMounted] = useState(false);
@@ -145,7 +145,7 @@ export default function AdminPage() {
       email: user.email,
       password: '',
       phone: user.phone || '',
-      status: user.status,
+      status: 'user',
     });
     setShowCreateForm(true);
   };
@@ -230,6 +230,8 @@ export default function AdminPage() {
         {/* Main Content */}
         <main className="max-w-7xl mx-auto w-full px-8 py-12 flex flex-col gap-10">
 
+          <div className="flex justify-end"><button onClick={() => router.push('/admin/aim')} className="rounded-xl border border-orange-400/20 bg-orange-400/10 px-5 py-3 text-sm font-semibold text-orange-200">Oyuncu karşılaştırması · Kademeli Aim</button></div>
+
           {/* Dashboard Stats & Actions */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
             <div className="flex items-center gap-8">
@@ -276,6 +278,7 @@ export default function AdminPage() {
                     </div>
                   </div>
 
+                  {usersError && <p role="alert" className="mb-6 text-red-300">{usersError}</p>}
                   <form onSubmit={editingUser ? handleUpdateUser : handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
                     <div className="space-y-3">
                       <label className="text-[11px] font-black text-[#00965e] uppercase tracking-[3px] ml-1">Tam Ad Soyad</label>
@@ -311,8 +314,9 @@ export default function AdminPage() {
                           onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                           className="w-full px-6 py-5 bg-white/5 border border-white/10 rounded-[24px] outline-none focus:border-[#00965e]/60 focus:bg-white/10 transition-all font-bold placeholder:text-white/10"
                           required
-                          minLength={6}
-                          placeholder="Min. 6 simvol"
+                          minLength={8}
+                          maxLength={128}
+                          placeholder="Min. 8 simvol"
                         />
                       </div>
                     )}
@@ -326,18 +330,6 @@ export default function AdminPage() {
                         className="w-full px-6 py-5 bg-white/5 border border-white/10 rounded-[24px] outline-none focus:border-[#00965e]/60 focus:bg-white/10 transition-all font-bold placeholder:text-white/10"
                         placeholder="+994 -- --- -- --"
                       />
-                    </div>
-
-                    <div className="space-y-3">
-                      <label className="text-[11px] font-black text-[#00965e] uppercase tracking-[3px] ml-1">Səlahiyyət Rejimi</label>
-                      <select
-                        value={formData.status}
-                        onChange={(e) => setFormData({ ...formData, status: e.target.value as 'admin' | 'user' })}
-                        className="w-full px-6 py-5 bg-white/5 border border-white/10 rounded-[24px] outline-none focus:border-[#00965e]/60 focus:bg-white/10 transition-all font-bold appearance-none cursor-pointer"
-                      >
-                        <option value="user" className="bg-[#1a1a1a]">Standart İstifadəçi (User)</option>
-                        <option value="admin" className="bg-[#1a1a1a]">Sistem Administrator (Admin)</option>
-                      </select>
                     </div>
 
                     <div className="flex items-end">

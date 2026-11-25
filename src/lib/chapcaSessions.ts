@@ -1,5 +1,5 @@
-import { collection, addDoc, query, where, getDocs, orderBy, Timestamp, limit, startAfter, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
-import { db } from './firebase';
+import { Timestamp } from 'firebase/firestore';
+import { api, errorMessage, type PageCursor } from './api-client';
 
 export interface ChapcaAttempt {
   type: 'tarih' | 'dogum' | 'text' | 'rakam';
@@ -20,57 +20,17 @@ export interface ChapcaSession {
   createdAt: Timestamp;
 }
 
-// Chapca oturumunu Firestore'a kaydet
-export const saveChapcaSession = async (session: Omit<ChapcaSession, 'createdAt'>) => {
+export async function saveChapcaSession(session: Omit<ChapcaSession, 'createdAt'>) {
   try {
-    const docRef = await addDoc(collection(db, 'chapcaSessions'), {
-      ...session,
-      createdAt: Timestamp.now(),
-    });
-    return { id: docRef.id, error: null };
-  } catch (error: any) {
-    console.error('Error saving chapca session:', error);
-    return { id: null, error: error.message };
-  }
-};
-
-// Kullanıcının chapca oturumlarını sayfa ilə getir
-export const getUserChapcaSessions = async (email: string, pageSize: number = 10, lastDoc: QueryDocumentSnapshot<DocumentData> | null = null) => {
+    const result = await api<{ id: string }>('sessions/chapca', 'POST', session);
+    return { id: result.id, error: null };
+  } catch (error) { return { id: null, error: errorMessage(error) }; }
+}
+export async function getUserChapcaSessions(email: string, pageSize = 10, lastDoc: PageCursor | null = null) {
   try {
-    // Not: orderBy ve where bir arada olunca index tələb edə bilər. 
-    // Əgər xəta verərsə, createdAt üzrə index yaradılmalıdır.
-    let q;
-    if (lastDoc) {
-      q = query(
-        collection(db, 'chapcaSessions'),
-        where('email', '==', email),
-        orderBy('createdAt', 'desc'),
-        startAfter(lastDoc),
-        limit(pageSize)
-      );
-    } else {
-      q = query(
-        collection(db, 'chapcaSessions'),
-        where('email', '==', email),
-        orderBy('createdAt', 'desc'),
-        limit(pageSize)
-      );
-    }
-
-    const querySnapshot = await getDocs(q);
-    const sessions: (ChapcaSession & { id: string })[] = [];
-    const lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1] || null;
-
-    querySnapshot.forEach((doc) => {
-      sessions.push({
-        id: doc.id,
-        ...doc.data() as ChapcaSession,
-      });
-    });
-
-    return { sessions, lastDoc: lastVisible, error: null };
-  } catch (error: any) {
-    console.error('Error fetching chapca sessions:', error);
-    return { sessions: [], lastDoc: null, error: error.message };
-  }
-};
+    const params = new URLSearchParams({ email, pageSize: String(pageSize) });
+    if (lastDoc) params.set('cursor', lastDoc);
+    const result = await api<{ sessions: (ChapcaSession & { id: string })[]; lastDoc: PageCursor | null }>(`sessions/chapca?${params}`);
+    return { ...result, error: null };
+  } catch (error) { return { sessions: [], lastDoc: null, error: errorMessage(error) }; }
+}

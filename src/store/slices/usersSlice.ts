@@ -1,16 +1,17 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import {
   getAllUsers,
   createUser,
   updateUser,
   deleteUser,
   type User,
+  type UserUpdate,
 } from '@/lib/users';
-import { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
+import { errorMessage, type PageCursor } from '@/lib/api-client';
 
 interface UsersState {
   users: User[];
-  lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+  lastDoc: PageCursor | null;
   hasMore: boolean;
   isLoading: boolean;
   error: string | null;
@@ -27,15 +28,15 @@ const initialState: UsersState = {
 // Async thunks
 export const fetchUsers = createAsyncThunk(
   'users/fetchAll',
-  async ({ pageSize, lastDoc }: { pageSize: number; lastDoc?: QueryDocumentSnapshot<DocumentData> | null }, { rejectWithValue }) => {
+  async ({ pageSize, lastDoc }: { pageSize: number; lastDoc?: PageCursor | null }, { rejectWithValue }) => {
     try {
       const { users, lastDoc: newLastDoc, error } = await getAllUsers(pageSize, lastDoc);
       if (error) {
         return rejectWithValue(error);
       }
       return { users, lastDoc: newLastDoc, hasMore: users.length === pageSize };
-    } catch (error: any) {
-      return rejectWithValue(error.message);
+    } catch (error) {
+      return rejectWithValue(errorMessage(error));
     }
   }
 );
@@ -59,7 +60,7 @@ export const createUserAction = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const { id, userId, error } = await createUser(email, password, {
+      const { user, error } = await createUser(email, password, {
         name,
         phone,
         status,
@@ -67,17 +68,10 @@ export const createUserAction = createAsyncThunk(
       if (error) {
         return rejectWithValue(error);
       }
-      return {
-        id,
-        email,
-        name,
-        phone: phone || '',
-        status,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      } as User;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
+      if (!user) return rejectWithValue('Kullanıcı oluşturulamadı.');
+      return user;
+    } catch (error) {
+      return rejectWithValue(errorMessage(error));
     }
   }
 );
@@ -85,17 +79,18 @@ export const createUserAction = createAsyncThunk(
 export const updateUserAction = createAsyncThunk(
   'users/update',
   async (
-    { userId, userData }: { userId: string; userData: Partial<User> },
+    { userId, userData }: { userId: string; userData: UserUpdate },
     { rejectWithValue }
   ) => {
     try {
-      const { error } = await updateUser(userId, userData);
+      const { user, error } = await updateUser(userId, userData);
       if (error) {
         return rejectWithValue(error);
       }
-      return { userId, userData };
-    } catch (error: any) {
-      return rejectWithValue(error.message);
+      if (!user) return rejectWithValue('Kullanıcı güncellenemedi.');
+      return { userId, userData: user };
+    } catch (error) {
+      return rejectWithValue(errorMessage(error));
     }
   }
 );
@@ -109,8 +104,8 @@ export const removeUser = createAsyncThunk(
         return rejectWithValue(error);
       }
       return userId;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
+    } catch (error) {
+      return rejectWithValue(errorMessage(error));
     }
   }
 );
@@ -142,7 +137,7 @@ const usersSlice = createSlice({
         } else {
           state.users = action.payload.users;
         }
-        state.lastDoc = action.payload.lastDoc as any; // Firestore types can be tricky with Immer
+        state.lastDoc = action.payload.lastDoc;
         state.hasMore = action.payload.hasMore;
       })
       .addCase(fetchUsers.rejected, (state, action) => {

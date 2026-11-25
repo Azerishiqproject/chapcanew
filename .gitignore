@@ -24,8 +24,9 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # local env files
-.env*.local
-.env
+.env*
+!.env.example
+*-firebase-adminsdk-*.json
 
 # vercel
 .vercel
@@ -39,3 +40,6 @@ next-env.d.ts
 
 # Firestore exports may contain passwords and personal data
 /backups/
+
+# Firebase emulator logs
+*-debug.log

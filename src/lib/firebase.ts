@@ -1,19 +1,24 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getApp, getApps, initializeApp } from 'firebase/app';
+import { connectAuthEmulator, getAuth } from 'firebase/auth';
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyD0SU6QHx4hbgVf9Arj_dFTzwU5ypCwUm0",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "mida-traninig.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "mida-traninig",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "mida-traninig.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "450096530520",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:450096530520:web:7c07414ffd6873c661362d",
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-// Initialize Cloud Firestore and get a reference to the service
-export const db = getFirestore(app);
-
-export default app;
+// No fallback to the previous Firebase project. Initialize only on admin login.
+export function getFirebaseAuth() {
+  const config = {
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  };
+  if (!config.apiKey || !config.projectId || !config.authDomain) {
+    throw new Error('Firebase yapılandırması henüz tamamlanmadı.');
+  }
+  const auth = getAuth(getApps().length ? getApp() : initializeApp(config));
+  const emulator = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL;
+  if (emulator && process.env.NODE_ENV === 'development' && config.projectId.startsWith('demo-') && !auth.emulatorConfig) {
+    if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(emulator)) throw new Error('Invalid local Auth emulator URL.');
+    connectAuthEmulator(auth, emulator, { disableWarnings: true });
+  }
+  return auth;
+}

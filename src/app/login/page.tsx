@@ -39,6 +39,8 @@ export default function LoginPage() {
   const getErrorMessage = (errorMsg: string | null) => {
     if (!errorMsg) return '';
     if (errorMsg.includes('auth/user-not-found')) return 'İstifadəçi tapılmadı';
+    if (errorMsg.includes('auth/invalid-credential')) return 'E-poçt və ya şifrə yanlışdır';
+    if (errorMsg.includes('auth/too-many-requests')) return 'Çox sayda cəhd. Bir qədər sonra yenidən yoxlayın.';
     if (errorMsg.includes('auth/wrong-password')) return 'Şifrə yanlışdır';
     if (errorMsg.includes('auth/invalid-email')) return 'E-poçt formatı yanlışdır';
     return 'Giriş zamanı xəta baş verdi. Yenidən cəhd edin.';

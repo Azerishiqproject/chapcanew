@@ -9,7 +9,8 @@ import { getUserAimSessions, AimSession } from '@/lib/aimSessions';
 import { getUserSalesSessions, SalesSession } from '@/lib/salesSessions';
 import { Timestamp } from 'firebase/firestore';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
+import AimSessionDetails, { aimMs } from '@/components/AimSessionDetails';
+import type { PageCursor } from '@/lib/api-client';
 import {
   ArrowLeft,
   LogOut,
@@ -44,15 +45,15 @@ export default function ProfilePage() {
   const [sessions, setSessions] = useState<(ChapcaSession & { id: string })[]>([]);
   const [aimSessions, setAimSessions] = useState<(AimSession & { id: string })[]>([]);
   // Pagination State
-  const [lastDocChapca, setLastDocChapca] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [lastDocChapca, setLastDocChapca] = useState<PageCursor | null>(null);
   const [hasMoreChapca, setHasMoreChapca] = useState(true);
-  const [lastDocAim, setLastDocAim] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [lastDocAim, setLastDocAim] = useState<PageCursor | null>(null);
   const [hasMoreAim, setHasMoreAim] = useState(true);
 
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [activeTab, setActiveTab] = useState<'chapca' | 'aim' | 'sales'>('chapca');
   const [salesSessions, setSalesSessions] = useState<(SalesSession & { id: string })[]>([]);
-  const [lastDocSales, setLastDocSales] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [lastDocSales, setLastDocSales] = useState<PageCursor | null>(null);
   const [hasMoreSales, setHasMoreSales] = useState(true);
 
   // Filters (Note: Firestore pagination with complex filters requires indexes)
@@ -416,7 +417,7 @@ export default function ProfilePage() {
                                   <>
                                     <span className="text-[11px] font-black text-white/40 uppercase tracking-tighter">Score: {(session as AimSession).score}</span>
                                     <span className="w-1 h-1 bg-white/20 rounded-full"></span>
-                                    <span className="text-[11px] font-black text-[#00965e] uppercase tracking-tighter">Level: {(session as AimSession).level}</span>
+                                    <span className="text-[11px] font-black text-[#00965e] uppercase tracking-tighter">Orta reaksiya: {aimMs((session as AimSession).averageReactionMs)}</span>
                                   </>
                                 ) : (
                                   <>
@@ -457,28 +458,7 @@ export default function ProfilePage() {
                                 ))}
                               </div>
                             ) : activeTab === 'aim' ? (
-                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
-                                <div className="flex flex-col gap-1 p-5 rounded-3xl bg-white/5 border border-white/10 hover:border-[#00965e]/40 transition-all">
-                                  <Activity size={24} className="mx-auto mb-2 text-[#4fbfa3]" />
-                                  <span className="text-[11px] font-black text-white/30 uppercase tracking-[2px]">Dəqiqlik</span>
-                                  <span className="text-2xl font-black italic">{(session as AimSession).accuracy.toFixed(1)}%</span>
-                                </div>
-                                <div className="flex flex-col gap-1 p-5 rounded-3xl bg-white/5 border border-white/10 hover:border-[#00965e]/40 transition-all">
-                                  <XCircle size={24} className="mx-auto mb-2 text-red-500" />
-                                  <span className="text-[11px] font-black text-white/30 uppercase tracking-[2px]">Yalnış</span>
-                                  <span className="text-2xl font-black italic">{(session as AimSession).misses}</span>
-                                </div>
-                                <div className="flex flex-col gap-1 p-5 rounded-3xl bg-white/5 border border-white/10 hover:border-[#00965e]/40 transition-all">
-                                  <Trophy size={24} className="mx-auto mb-2 text-yellow-500" />
-                                  <span className="text-[11px] font-black text-white/30 uppercase tracking-[2px]">Xal</span>
-                                  <span className="text-2xl font-black italic">{(session as AimSession).score}</span>
-                                </div>
-                                <div className="flex flex-col gap-1 p-5 rounded-3xl bg-white/5 border border-white/10 hover:border-[#00965e]/40 transition-all">
-                                  <RefreshCw size={24} className="mx-auto mb-2 text-blue-500" />
-                                  <span className="text-[11px] font-black text-white/30 uppercase tracking-[2px]">Rejim</span>
-                                  <span className="text-[14px] font-black uppercase tracking-tight">{(session as AimSession).gameMode}</span>
-                                </div>
-                              </div>
+                              <AimSessionDetails session={session as AimSession & { id: string }} />
                             ) : (
                               <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
                                 <div className="flex flex-col gap-1 p-5 rounded-3xl bg-white/5 border border-white/10 hover:border-[#00965e]/40 transition-all">

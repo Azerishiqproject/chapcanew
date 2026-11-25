@@ -1,27 +1,10 @@
-import { getUserByEmail } from './users';
-import type { UserStatus } from './users';
+import { getSession } from './auth';
 
-// Firestore'dan kullanıcı status'unu kontrol et
-export const checkUserStatus = async (email: string): Promise<UserStatus | null> => {
+export async function checkUserStatus(email: string) {
   try {
-    const { user, error } = await getUserByEmail(email);
-    if (error || !user) {
-      return null;
-    }
-    return user.status;
-  } catch (error) {
-    return null;
-  }
-};
-
-// Admin kontrolü
-export const isAdmin = async (email: string): Promise<boolean> => {
-  const status = await checkUserStatus(email);
-  return status === 'admin';
-};
-
-// User kontrolü
-export const isUser = async (email: string): Promise<boolean> => {
-  const status = await checkUserStatus(email);
-  return status === 'user';
-};
+    const user = await getSession();
+    return user.email === email.trim().toLowerCase() ? user.status : null;
+  } catch { return null; }
+}
+export async function isAdmin(email: string) { return await checkUserStatus(email) === 'admin'; }
+export async function isUser(email: string) { return await checkUserStatus(email) === 'user'; }

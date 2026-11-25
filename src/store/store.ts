@@ -11,17 +11,7 @@ export const store = configureStore({
     theme: themeReducer,
     captcha: captchaReducer,
   },
-  middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware({
-      serializableCheck: {
-        // Firestore lastDoc is a non-serializable QueryDocumentSnapshot
-        ignoredActions: ['users/fetchAll/fulfilled', 'users/fetchAll/pending', 'users/fetchAll/rejected'],
-        ignoredActionPaths: ['payload.lastDoc', 'meta.arg.lastDoc'],
-        ignoredPaths: ['users.lastDoc'],
-      },
-    }),
 });
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
-

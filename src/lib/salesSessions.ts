@@ -1,5 +1,5 @@
-import { collection, addDoc, query, where, getDocs, orderBy, Timestamp, limit, startAfter, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
-import { db } from './firebase';
+import { Timestamp } from 'firebase/firestore';
+import { api, errorMessage, type PageCursor } from './api-client';
 
 export interface SalesSession {
     email: string;
@@ -16,55 +16,17 @@ export interface SalesSession {
     createdAt: Timestamp;
 }
 
-// Save sales session to Firestore
-export const saveSalesSession = async (session: Omit<SalesSession, 'createdAt'>) => {
-    try {
-        const docRef = await addDoc(collection(db, 'salesSessions'), {
-            ...session,
-            createdAt: Timestamp.now(),
-        });
-        return { id: docRef.id, error: null };
-    } catch (error: any) {
-        console.error('Error saving sales session:', error);
-        return { id: null, error: error.message };
-    }
-};
-
-// Get user sales sessions
-export const getUserSalesSessions = async (email: string, pageSize: number = 10, lastDoc: QueryDocumentSnapshot<DocumentData> | null = null) => {
-    try {
-        let q;
-        if (lastDoc) {
-            q = query(
-                collection(db, 'salesSessions'),
-                where('email', '==', email),
-                orderBy('createdAt', 'desc'),
-                startAfter(lastDoc),
-                limit(pageSize)
-            );
-        } else {
-            q = query(
-                collection(db, 'salesSessions'),
-                where('email', '==', email),
-                orderBy('createdAt', 'desc'),
-                limit(pageSize)
-            );
-        }
-
-        const querySnapshot = await getDocs(q);
-        const sessions: (SalesSession & { id: string })[] = [];
-        const lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1] || null;
-
-        querySnapshot.forEach((doc) => {
-            sessions.push({
-                id: doc.id,
-                ...doc.data() as SalesSession,
-            });
-        });
-
-        return { sessions, lastDoc: lastVisible, error: null };
-    } catch (error: any) {
-        console.error('Error fetching sales sessions:', error);
-        return { sessions: [], lastDoc: null, error: error.message };
-    }
-};
+export async function saveSalesSession(session: Omit<SalesSession, 'createdAt'>) {
+  try {
+    const result = await api<{ id: string }>('sessions/sales', 'POST', session);
+    return { id: result.id, error: null };
+  } catch (error) { return { id: null, error: errorMessage(error) }; }
+}
+export async function getUserSalesSessions(email: string, pageSize = 10, lastDoc: PageCursor | null = null) {
+  try {
+    const params = new URLSearchParams({ email, pageSize: String(pageSize) });
+    if (lastDoc) params.set('cursor', lastDoc);
+    const result = await api<{ sessions: (SalesSession & { id: string })[]; lastDoc: PageCursor | null }>(`sessions/sales?${params}`);
+    return { ...result, error: null };
+  } catch (error) { return { sessions: [], lastDoc: null, error: errorMessage(error) }; }
+}

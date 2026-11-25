@@ -1,33 +1,9 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    // This compatibility ruleset preserves the current application's behavior.
-    // The app does not use Firebase Authentication, so these collections must be
-    // public for the current login and session flows to keep working.
-    match /users/{userId} {
-      allow read, create, update, delete: if true;
-    }
-
-    match /chapcaSessions/{sessionId} {
-      allow read, create: if true;
-      allow update, delete: if false;
-    }
-
-    match /salesSessions/{sessionId} {
-      allow read, create: if true;
-      allow update, delete: if false;
-    }
-
-    match /aimSessions/{sessionId} {
-      allow read, create: if true;
-      allow update, delete: if false;
-    }
-
-    match /captchaSettings/{userId} {
-      allow read, create, update, delete: if true;
-    }
-
+    // All access goes through the Next.js server with Firebase Admin SDK.
+    // Normal users have no Firebase Auth account; authorization is enforced
+    // by the server's HttpOnly sessions. Direct client access is disabled.
     match /{document=**} {
       allow read, write: if false;
     }

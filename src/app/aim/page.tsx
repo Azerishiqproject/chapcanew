@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { logoutUser } from '@/store/slices/authSlice';
@@ -12,17 +12,11 @@ export default function AimPage() {
   const dispatch = useAppDispatch();
   const { user, isAuthenticated, isLoading } = useAppSelector((state) => state.auth);
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (mounted && !isAuthenticated && !isLoading) {
+    if (!isAuthenticated && !isLoading) {
       router.push('/login');
     }
-  }, [isAuthenticated, isLoading, router, mounted]);
+  }, [isAuthenticated, isLoading, router]);
 
   const handleLogout = async () => {
     await dispatch(logoutUser());
@@ -33,7 +27,7 @@ export default function AimPage() {
     router.push('/');
   };
 
-  if (!mounted || isLoading || !isAuthenticated) {
+  if (isLoading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
         <div className="text-center">
@@ -74,7 +68,7 @@ export default function AimPage() {
                 <div className="w-10 h-10 bg-gradient-to-tr from-[#00965e] to-[#4fbfa3] rounded-xl flex items-center justify-center shadow-lg">
                   <Target className="text-white w-6 h-6" />
                 </div>
-                <h1 className="text-xl font-black uppercase tracking-tight">Aim Trainer</h1>
+                <h1 className="text-xl font-black uppercase tracking-tight">Direct Aim</h1>
               </div>
             </div>
 
@@ -102,30 +96,17 @@ export default function AimPage() {
         </header>
 
         {/* Main Content */}
-        <main className="max-w-7xl mx-auto w-full px-8 py-12 flex flex-col items-center">
-          <div className="text-center mb-12 animate-in fade-in slide-in-from-top-4 duration-700">
-            <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 mb-6">
-              <span className="w-2 h-2 rounded-full bg-[#00965e] animate-pulse"></span>
-              <span className="text-[10px] font-black text-white/50 uppercase tracking-[3px]">Simulyasiya Rejimi</span>
-            </div>
-            <h2 className="text-[42px] font-black text-white mb-4 tracking-tighter uppercase">
-              MİDA Aim Trainer <span className="text-[#00965e]">🎯</span>
-            </h2>
-            <p className="text-lg text-white/40 font-medium max-w-2xl mx-auto">
-              Hədəflərə doğru tıklayaraq sürət və dəqiqliyinizi yoxlayın. 3 hədəfi qaçırtsanız oyun bitir.
-            </p>
-          </div>
-
+        <main className="max-w-7xl mx-auto w-full px-4 py-8 sm:px-8 flex flex-col items-center">
           <div className="w-full animate-in fade-in zoom-in-95 duration-1000 delay-200">
             {/* Aim Trainer Component */}
-            <AimTrainer userEmail={user?.email} />
+            <AimTrainer />
           </div>
         </main>
 
         <footer className="mt-auto px-8 py-10 border-t border-white/5 flex justify-center items-center">
           <div className="flex flex-col items-center text-center">
             <span className="text-[11px] font-black text-white/20 uppercase tracking-[4px] mb-2">MİDA Simulation Engine</span>
-            <span className="text-[10px] font-bold text-white/10 uppercase tracking-widest italic leading-tight">Advanced Reactive Target Acquisition Training v3.5.0</span>
+            <span className="text-[10px] font-bold text-white/10 uppercase tracking-widest italic leading-tight">Direct Aim · Challenge Training</span>
           </div>
         </footer>
       </div>

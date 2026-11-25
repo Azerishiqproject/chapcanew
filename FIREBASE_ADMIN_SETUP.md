@@ -1,47 +1,34 @@
-# Firebase Admin SDK Kurulumu
+# Firebase Admin SDK ve admin hesabı
 
-## Adımlar:
+Bu proje `chapca-new` Firebase projesi için yapılandırılmıştır.
 
-### 1. Firebase Console'a Git
-https://console.firebase.google.com/
+- Admin e-posta: `admin@admin.com`
+- Beklenen UID: `LyUa9Ueq9SNiP4NydsNqXFkxkKb2`
+- Admin profili yalnızca Firebase Authentication'da tutulur; Firestore `users` koleksiyonuna admin eklenmez.
+- Admin şifresi Auth'ta yönetilir. Kaynak koda yazılmaz.
 
-### 2. Projenizi Seçin
-- "mida-traninig" projesini seçin
+## Sunucu anahtarı
 
-### 3. Service Account Key Oluştur
-1. Sol menüden **Project Settings** (⚙️ simgesi) → **Service Accounts** sekmesine gidin
-2. **Generate New Private Key** butonuna tıklayın
-3. JSON dosyasını indirin (örn: `mida-traninig-firebase-adminsdk-xxxxx.json`)
+Firebase Console → Project settings → Service accounts → Generate new private key.
 
-### 4. .env.local Dosyasına Ekle
-İndirdiğiniz JSON dosyasından şu bilgileri alın:
+JSON dosyasındaki `project_id`, `client_email`, `private_key` alanlarını `.env.local` içinde sırasıyla `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` alanlarına girin. Anahtar çift tırnak içinde `\n` ayraçlarıyla tek satırda tutulabilir. Hiçbir servis hesabı alanını `NEXT_PUBLIC_` önekiyle tanımlamayın.
 
-```json
-{
-  "project_id": "mida-traninig",
-  "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
-  "client_email": "firebase-adminsdk-xxxxx@mida-traninig.iam.gserviceaccount.com"
-}
-```
+Web ve servis hesabı proje kimlikleri aynı olmalıdır. Sunucu uyuşmazlıkta bağlantıyı reddeder.
 
-`.env.local` dosyanıza şu satırları ekleyin:
+## Admin
+
+Auth → Sign-in method → Email/Password etkin olmalı. Auth → Users bölümündeki admin UID'si `.env.local` içindeki `FIREBASE_ADMIN_UID` ile eşleşmeli.
+
+Hesap zaten varsa kurulum betiği şifreyi değiştirmez:
 
 ```bash
-# Firebase Admin SDK (Backend)
-FIREBASE_PROJECT_ID=mida-traninig
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@mida-traninig.iam.gserviceaccount.com
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour-Private-Key-Here\n-----END PRIVATE KEY-----\n"
+npm run setup:admin -- --confirm-project=chapca-new
 ```
 
-**ÖNEMLİ:** `FIREBASE_PRIVATE_KEY` değerini tırnak içinde yazın ve `\n` karakterlerini koruyun!
+Hesap yoksa yalnızca bu işlem için `ADMIN_INITIAL_PASSWORD` değişkenini doldurun. Betik Auth hesabını oluşturur ve UID'yi gösterir. UID'yi yapılandırmaya ekleyin ve başlangıç şifresi değişkenini temizleyin.
 
-### 5. Sunucuyu Yeniden Başlat
-```bash
-npm run dev
-```
+## Firestore
 
-## Test Et
-Artık admin panelinden kullanıcı oluştururken:
-- ✅ Admin şifrenizi girmenize gerek yok
-- ✅ Oturumunuz korunuyor
-- ✅ Liste otomatik yenileniyor
+`firestore.rules` ve `firestore.indexes.json` dosyalarını uygulayın. Kurallar bütün doğrudan istemci erişimini reddeder. Uygulamanın Next.js sunucusu Firebase Admin SDK ile çalışır ve kendi oturum/yetki kontrollerini uygular.
+
+Ayrıntılı kurulum, test ve yayınlama adımları [README.md](README.md) içindedir.
