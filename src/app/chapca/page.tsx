@@ -8,9 +8,11 @@ import DateCaptcha from '@/components/DateCaptcha';
 import BirthDateCaptcha from '@/components/BirthDateCaptcha';
 import TextCaptcha from '@/components/TextCaptcha';
 import PuzzleCaptcha from '@/components/PuzzleCaptcha';
+import { ChapcaTracker } from '@/lib/chapca-tracker';
+import { legacyType, type CaptchaCondition } from '@/lib/captcha-metrics';
 import { canonicalDate } from '@/lib/captcha-config';
 import NumberCaptcha from '@/components/NumberCaptcha';
-import { saveChapcaSession, ChapcaAttempt, type ChapcaType } from '@/lib/chapcaSessions';
+import { saveChapcaSession, type ChapcaType } from '@/lib/chapcaSessions';
 import { Timestamp } from 'firebase/firestore';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { FaCheck, FaCalendarDay, FaBirthdayCake, FaFont, FaHashtag } from 'react-icons/fa';
@@ -45,23 +47,20 @@ export default function ChapcaPage() {
   // Gerçek oynanacak chapca listesi (ayarlara göre çoğaltılmış)
   const [playableChapcas, setPlayableChapcas] = useState<ChapcaType[]>([]);
 
-  // Oturum takibi
-  const [sessionStartTime, setSessionStartTime] = useState<Timestamp | null>(null);
-  const [chapcaAttempts, setChapcaAttempts] = useState<ChapcaAttempt[]>([]);
-  const [currentChapcaStartTime, setCurrentChapcaStartTime] = useState<Timestamp | null>(null);
-
-  // Gerçek zamanlı timer
-  const [currentTime, setCurrentTime] = useState<number>(0); // milisaniye cinsinden
-
-  // Component refresh key'leri (yanlış yapıldığında yenilemek için)
-  const [dateCaptchaKey, setDateCaptchaKey] = useState<number>(0);
-  const [birthDateCaptchaKey, setBirthDateCaptchaKey] = useState<number>(0);
-  const [textCaptchaKey, setTextCaptchaKey] = useState<number>(0);
-  const [numberCaptchaKey, setNumberCaptchaKey] = useState<number>(0);
-
-  // Session kayıt flag'i (çift kayıt önlemek için)
-  const isSessionSavingRef = useRef<boolean>(false);
-
+  const tracker = useRef<ChapcaTracker | null>(null);
+  const pendingSave = useRef<ReturnType<ChapcaTracker['finish']>>(null);
+  const saving = useRef(false), alive = useRef(true);
+  const [saveError, setSaveError] = useState('');
+  const [completedNotice, setCompletedNotice] = useState('');
+  const [currentTime, setCurrentTime] = useState(0);
+  const leaveRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    alive.current = true;
+    const leave = () => leaveRef.current();
+    const visibility = () => tracker.current?.visibility(document.visibilityState === 'visible');
+    window.addEventListener('pagehide', leave); document.addEventListener('visibilitychange', visibility);
+    return () => { alive.current = false; window.removeEventListener('pagehide', leave); document.removeEventListener('visibilitychange', visibility); leave(); };
+  }, []);
   useEffect(() => {
     if (!isAuthenticated && !isLoading) {
       router.push('/login');
@@ -69,11 +68,13 @@ export default function ChapcaPage() {
   }, [isAuthenticated, isLoading, router]);
 
   const handleLogout = async () => {
+    await saveSessionToDatabase();
     await dispatch(logoutUser());
     router.push('/login');
   };
 
   const handleBack = () => {
+    void saveSessionToDatabase();
     router.push('/');
   };
 
@@ -87,149 +88,33 @@ export default function ChapcaPage() {
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
   };
 
-  const handleDateVerify = (isCorrect: boolean) => {
-    console.log('Tarih doğrulama sonucu:', isCorrect);
-    const isLastChapca = currentChapcaIndex === playableChapcas.length - 1;
-
-    if (isCorrect) {
-      // Doğru: kaydet ve sonraki chapcaya geç
-      recordChapcaAttempt('tarih', isCorrect, isLastChapca);
-      handleNextChapca();
-    } else {
-      // Yanlış: kaydet ama timer'ı sıfırlama, chapcayı yenile
-      recordChapcaAttempt('tarih', isCorrect, false);
-      // Component key'ini değiştirerek yenile
-      setDateCaptchaKey(prev => prev + 1);
-    }
-  };
-
-  const handleBirthDateVerify = (isCorrect: boolean) => {
-    console.log('Doğum tarihi doğrulama sonucu:', isCorrect);
-    const isLastChapca = currentChapcaIndex === playableChapcas.length - 1;
-
-    if (isCorrect) {
-      // Doğru: kaydet ve sonraki chapcaya geç
-      recordChapcaAttempt('dogum', isCorrect, isLastChapca);
-      handleNextChapca();
-    } else {
-      // Yanlış: kaydet ama timer'ı sıfırlama, chapcayı yenile
-      recordChapcaAttempt('dogum', isCorrect, false);
-      // Component key'ini değiştirerek yenile
-      setBirthDateCaptchaKey(prev => prev + 1);
-    }
-  };
-
-  const handleTextVerify = (isCorrect: boolean) => {
-    console.log('Text captcha doğrulama sonucu:', isCorrect);
-    const isLastChapca = currentChapcaIndex === playableChapcas.length - 1;
-
-    if (isCorrect) {
-      // Doğru: kaydet ve sonraki chapcaya geç
-      recordChapcaAttempt('text', isCorrect, isLastChapca);
-      handleNextChapca();
-    } else {
-      // Yanlış: kaydet ama timer'ı sıfırlama, chapcayı yenile
-      recordChapcaAttempt('text', isCorrect, false);
-      // Component key'ini değiştirerek yenile
-      setTextCaptchaKey(prev => prev + 1);
-    }
-  };
-
-  const handleNumberVerify = (isCorrect: boolean) => {
-    console.log('Rakam captcha doğrulama sonucu:', isCorrect);
-    const isLastChapca = currentChapcaIndex === playableChapcas.length - 1;
-
-    if (isCorrect) {
-      // Doğru: kaydet ve sonraki chapcaya geç
-      recordChapcaAttempt('rakam', isCorrect, isLastChapca);
-      handleNextChapca();
-    } else {
-      // Yanlış: kaydet ama timer'ı sıfırlama, chapcayı yenile
-      recordChapcaAttempt('rakam', isCorrect, false);
-      // Component key'ini değiştirerek yenile
-      setNumberCaptchaKey(prev => prev + 1);
-    }
-  };
-
-  const handlePuzzleVerify = (isCorrect: boolean) => {
-    recordChapcaAttempt('puzzle', isCorrect, isCorrect && currentChapcaIndex === playableChapcas.length - 1);
-    if (isCorrect) handleNextChapca();
-  };
-
-  // Chapca denemesini kaydet
-  const recordChapcaAttempt = (type: ChapcaType, isCorrect: boolean, isLastChapca: boolean = false) => {
-    if (!currentChapcaStartTime) return;
-
-    const endTime = Timestamp.now();
-    const duration = endTime.toMillis() - currentChapcaStartTime.toMillis();
-    const durationInSeconds = Math.round(duration / 1000);
-
-    const attempt: ChapcaAttempt = {
-      type,
-      startTime: currentChapcaStartTime,
-      endTime,
-      duration: duration, // milisaniye cinsinden
-      durationSeconds: durationInSeconds, // saniye cinsinden (geriye dönük uyumluluk)
-      isCorrect,
-    };
-
-    // State'i güncelle - callback ile güncel state'i al
-    setChapcaAttempts(prev => {
-      const newAttempts = [...prev, attempt];
-
-      // Eğer bu son chapca ise ve doğru yapıldıysa, oturumu kaydet
-      if (isLastChapca && isCorrect && sessionStartTime && user?.email && !isSessionSavingRef.current) {
-        // Flag set et (çift kayıt önlemek için)
-        isSessionSavingRef.current = true;
-
-        // State güncellendikten sonra kaydet (setTimeout ile bir sonraki tick'te)
-        setTimeout(() => {
-          const endTime = Timestamp.now();
-          const totalDuration = endTime.toMillis() - sessionStartTime.toMillis();
-          const totalDurationSeconds = Math.round(totalDuration / 1000);
-
-          const session = {
-            email: user.email!,
-            startTime: sessionStartTime,
-            endTime,
-            totalDuration,
-            totalDurationSeconds,
-            chapcas: newAttempts, // Yeni eklenen attempt dahil
-          };
-
-          // Async kaydet
-          saveChapcaSession(session).then(result => {
-            if (result.error) {
-              console.error('Error saving session:', result.error);
-              alert('An error occurred while saving the session');
-              isSessionSavingRef.current = false; // Hata durumunda flag'i sıfırla
-            } else {
-              console.log('Session saved successfully:', result.id, 'with', session.chapcas.length, 'chapcas');
-
-              // UI'ı temizle
-              alert('Tüm chapcalar tamamlandı!');
-              setIsStarted(false);
-              setCurrentChapcaIndex(0);
-              setPlayableChapcas([]);
-              setSessionStartTime(null);
-              setChapcaAttempts([]);
-              setCurrentChapcaStartTime(null);
-              isSessionSavingRef.current = false;
-            }
-          });
-        }, 0);
-      }
-
-      return newAttempts;
-    });
-
-    // Yanlış yapıldığında timer'ı sıfırlama (devam etsin)
-    if (isCorrect) {
-      setCurrentChapcaStartTime(null);
-      setCurrentTime(0); // Timer'ı sıfırla
-    }
-    // Yanlış yapıldığında timer devam edecek (sıfırlamıyoruz)
-  };
+  async function persistRun(status: 'completed' | 'aborted', keepalive = false) {
+    pendingSave.current ??= tracker.current?.finish(status) ?? null;
+    const run = pendingSave.current;
+    if (!run || !user?.email || saving.current) return;
+    saving.current = true;
+    const aliases = { date: 'tarih', birthdate: 'dogum', number: 'rakam', text: 'text', puzzle: 'puzzle' } as const;
+    const result = await saveChapcaSession({
+      email: user.email, clientRunId: run.clientRunId, metricsVersion: 2, status: run.status, plan: run.plan, order: run.order,
+      startTime: Timestamp.fromMillis(run.startMs), endTime: Timestamp.fromMillis(run.endMs),
+      totalDuration: run.endMs - run.startMs, totalDurationSeconds: (run.endMs - run.startMs) / 1000,
+      chapcas: run.attempts.map(attempt => ({ type: aliases[attempt.type as keyof typeof aliases], startTime: Timestamp.fromMillis(attempt.startMs), endTime: Timestamp.fromMillis(attempt.endMs), duration: attempt.duration, durationSeconds: attempt.duration / 1000, isCorrect: attempt.isCorrect, questionIndex: attempt.questionIndex, attemptIndex: attempt.attemptIndex, condition: attempt.condition })),
+    }, keepalive);
+    saving.current = false;
+    if (result.error) { if (alive.current) setSaveError(result.error); return; }
+    pendingSave.current = null; tracker.current = null;
+    if (alive.current) { if (run.status === 'completed') setCompletedNotice(`${run.plan.length} CAPTCHA tamamlandı və nəticə yadda saxlanıldı.`); setSaveError(''); setIsStarted(false); setCurrentChapcaIndex(0); setPlayableChapcas([]); setCurrentTime(0); }
+  }
+  leaveRef.current = () => { void persistRun('aborted', true); };
+  function ready(condition: CaptchaCondition) { tracker.current?.ready(currentChapcaIndex, condition); }
+  function verified(correct: boolean) {
+    if (!tracker.current?.answer(currentChapcaIndex, correct)) return;
+    if (!correct) { if ((tracker.current?.attempts.length ?? 0) >= 200) void persistRun('aborted'); return; } // Each CAPTCHA owns its retry timer.
+    if (currentChapcaIndex === playableChapcas.length - 1) void persistRun('completed');
+    else setCurrentChapcaIndex(index => index + 1);
+  }
+  const handleDateVerify = verified, handleBirthDateVerify = verified, handleTextVerify = verified, handleNumberVerify = verified, handlePuzzleVerify = verified;
+  const saveSessionToDatabase = () => persistRun('aborted');
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, ''); // Sadece rakamları al
@@ -276,6 +161,7 @@ export default function ChapcaPage() {
   };
 
   const handleStart = () => {
+    if (pendingSave.current || saving.current) { setSaveError('Əvvəlki turu əvvəlcə yadda saxlayın.'); return; }
     if (selectedChapcas.length === 0) {
       alert('Please select at least one chapca');
       return;
@@ -330,117 +216,15 @@ export default function ChapcaPage() {
     setCurrentChapcaIndex(0);
     setIsStarted(true);
 
-    // Component key'lerini sıfırla
-    setDateCaptchaKey(0);
-    setBirthDateCaptchaKey(0);
-    setTextCaptchaKey(0);
-    setNumberCaptchaKey(0);
-
-    // Session kayıt flag'ini sıfırla
-    isSessionSavingRef.current = false;
-
-    // Oturum başlangıcını kaydet
-    const startTime = Timestamp.now();
-    setSessionStartTime(startTime);
-    setChapcaAttempts([]);
-
-    // İlk chapca başlangıcını kaydet
-    setCurrentChapcaStartTime(startTime);
+    tracker.current = new ChapcaTracker(newPlayableChapcas.map(type => legacyType(type)!), globalOrder);
+    tracker.current.visibility(document.visibilityState === 'visible');
+    pendingSave.current = null; setSaveError(''); setCompletedNotice('');
   };
-
-  const handleNextChapca = () => {
-    if (currentChapcaIndex < playableChapcas.length - 1) {
-      setCurrentChapcaIndex(prev => prev + 1);
-      // useEffect ile yeni chapca başlangıcı kaydedilecek
-    } else {
-      // Tüm chapcalar tamamlandı
-      // Son chapca kaydı recordChapcaAttempt içinde yapıldı ve shouldSaveSession set edildi
-      // Burada sadece flag set etme işlemi yapılmış olmalı (recordChapcaAttempt içinde)
-    }
-  };
-
-  // Oturumu veritabanına kaydet
-  const saveSessionToDatabase = async () => {
-    if (!sessionStartTime || !user?.email) {
-      console.warn('Cannot save session: missing data');
-      return;
-    }
-
-    const endTime = Timestamp.now();
-    const totalDuration = endTime.toMillis() - sessionStartTime.toMillis();
-    const totalDurationSeconds = Math.round(totalDuration / 1000);
-
-    const session = {
-      email: user.email,
-      startTime: sessionStartTime,
-      endTime,
-      totalDuration, // milisaniye cinsinden
-      totalDurationSeconds, // saniye cinsinden (geriye dönük uyumluluk)
-      chapcas: chapcaAttempts.length > 0 ? chapcaAttempts : [],
-    };
-
-    const result = await saveChapcaSession(session);
-    if (result.error) {
-      console.error('Error saving session:', result.error);
-      alert('An error occurred while saving the session');
-    } else {
-      console.log('Session saved successfully:', result.id);
-    }
-  };
-
-  // Oturumu veritabanına kaydet (attempts parametresi ile)
-  const saveSessionToDatabaseWithAttempts = async (attempts: ChapcaAttempt[]) => {
-    if (!sessionStartTime || !user?.email) {
-      console.warn('Cannot save session: missing data');
-      return;
-    }
-
-    const endTime = Timestamp.now();
-    const totalDuration = endTime.toMillis() - sessionStartTime.toMillis();
-    const totalDurationSeconds = Math.round(totalDuration / 1000);
-
-    const session = {
-      email: user.email,
-      startTime: sessionStartTime,
-      endTime,
-      totalDuration, // milisaniye cinsinden
-      totalDurationSeconds, // saniye cinsinden (geriye dönük uyumluluk)
-      chapcas: attempts.length > 0 ? attempts : [],
-    };
-
-    const result = await saveChapcaSession(session);
-    if (result.error) {
-      console.error('Error saving session:', result.error);
-      alert('An error occurred while saving the session');
-    } else {
-      console.log('Session saved successfully:', result.id);
-    }
-  };
-
-  // currentChapcaIndex değiştiğinde yeni chapca başlangıcını kaydet
   useEffect(() => {
-    if (isStarted && playableChapcas.length > 0 && currentChapcaIndex < playableChapcas.length) {
-      setCurrentChapcaStartTime(Timestamp.now());
-      setCurrentTime(0); // Timer'ı sıfırla
-    }
-  }, [currentChapcaIndex, isStarted, playableChapcas.length]);
-
-
-  // Gerçek zamanlı timer
-  useEffect(() => {
-    if (!isStarted || !currentChapcaStartTime) {
-      setCurrentTime(0);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const start = currentChapcaStartTime.toMillis();
-      setCurrentTime(now - start);
-    }, 10); // Her 10 milisaniyede bir güncelle (daha akıcı görünüm)
-
-    return () => clearInterval(interval);
-  }, [isStarted, currentChapcaStartTime]);
+    if (!isStarted) return;
+    const timer = setInterval(() => setCurrentTime(tracker.current?.elapsed(currentChapcaIndex) ?? 0), 50);
+    return () => clearInterval(timer);
+  }, [isStarted, currentChapcaIndex]);
 
   if (isLoading || !isAuthenticated) {
     return (
@@ -583,6 +367,8 @@ export default function ChapcaPage() {
 
       {/* Main Content */}
       <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            {saveError && <p role="alert" className="mx-auto max-w-xl rounded-xl bg-red-500/10 p-4 text-red-200">Nəticə saxlanılmadı: {saveError} <button onClick={() => void persistRun('aborted')} className="underline">Yenidən saxla</button></p>}
+        {completedNotice && <p role="status" className="mb-6 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-4 text-emerald-200">{completedNotice}</p>}
         {!isStarted ? (
           <>
             <div className="text-center mb-12">
@@ -769,15 +555,10 @@ export default function ChapcaPage() {
               <button
                 onClick={() => {
                   // Eğer oturum başlamışsa kaydet
-                  if (sessionStartTime && chapcaAttempts.length > 0) {
-                    saveSessionToDatabase();
-                  }
+                  void saveSessionToDatabase();
                   setIsStarted(false);
                   setCurrentChapcaIndex(0);
                   setPlayableChapcas([]);
-                  setSessionStartTime(null);
-                  setChapcaAttempts([]);
-                  setCurrentChapcaStartTime(null);
                 }}
                 className="flex items-center space-x-2 text-white/40 hover:text-white hover:bg-white/5 px-4 py-2 rounded-xl transition-all duration-300 font-bold"
               >
@@ -819,6 +600,7 @@ export default function ChapcaPage() {
               )}
             </div>
 
+
             {/* Chapca Container */}
             <div className="max-w-[380px] mx-auto relative group">
               <div className="relative">
@@ -842,27 +624,27 @@ export default function ChapcaPage() {
                   <div className="animate-in fade-in zoom-in-95 duration-500">
                     {playableChapcas[currentChapcaIndex] === 'tarih' ? (
                       <DateCaptcha
-                        key={`tarih-${currentChapcaIndex}-${dateCaptchaKey}`}
+                        key={`tarih-${currentChapcaIndex}`}
                         correctDate={correctDate}
-                        onVerify={handleDateVerify}
+                        onVerify={handleDateVerify} onReady={ready}
                       />
                     ) : playableChapcas[currentChapcaIndex] === 'dogum' ? (
                       <BirthDateCaptcha
-                        key={`dogum-${currentChapcaIndex}-${birthDateCaptchaKey}`}
+                        key={`dogum-${currentChapcaIndex}`}
                         correctDate={correctBirthDate}
-                        onVerify={handleBirthDateVerify}
+                        onVerify={handleBirthDateVerify} onReady={ready}
                       />
                     ) : playableChapcas[currentChapcaIndex] === 'text' ? (
                       <TextCaptcha
-                        key={`text-${currentChapcaIndex}-${textCaptchaKey}`}
-                        onVerify={handleTextVerify}
+                        key={`text-${currentChapcaIndex}`}
+                        onVerify={handleTextVerify} onReady={ready}
                       />
                     ) : playableChapcas[currentChapcaIndex] === 'puzzle' ? (
-                      <PuzzleCaptcha key={`puzzle-${currentChapcaIndex}`} onVerify={handlePuzzleVerify} />
+                      <PuzzleCaptcha key={`puzzle-${currentChapcaIndex}`} onVerify={handlePuzzleVerify} onReady={ready} />
                     ) : (
                       <NumberCaptcha
-                        key={`rakam-${currentChapcaIndex}-${numberCaptchaKey}`}
-                        onVerify={handleNumberVerify}
+                        key={`rakam-${currentChapcaIndex}`}
+                        onVerify={handleNumberVerify} onReady={ready}
                       />
                     )}
                   </div>

@@ -1,3 +1,4 @@
+import { captchaAnalytics } from '@/lib/server/captcha-analytics';
 import { startSalesRun, appendSalesEvents, salesRunEvents, salesOverview, publicSalesSession } from '@/lib/server/sales-service';
 import { resolveCaptchaSettings } from '@/lib/captcha-config';
 import { salesBuilding } from '@/lib/server/sales-catalog';
@@ -75,6 +76,8 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
 
     const identity = await getIdentity(request);
     if (route === 'auth/session' && method === 'GET') return json({ user: identity });
+
+    if (route === 'captcha/analytics' && method === 'GET') return json(await captchaAnalytics(identity, request.nextUrl.searchParams.get('email')));
 
     if (route === 'sales/runs' && method === 'POST') return json(await startSalesRun(identity, await readBody(request)), 201);
     if (route === 'sales/overview' && method === 'GET') return json(await salesOverview(identity, emailAddress(request.nextUrl.searchParams.get('email'))));
@@ -159,7 +162,17 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
       if (method === 'POST') {
         const body = await readBody(request);
         if (body.email !== undefined && emailAddress(body.email) !== identity.email) throw new ApiError(403, 'Başkasının adına sonuç yazamazsınız.');
-        const doc = await collection.add({ ...sessionFields(kind, body), userId: identity.uid, email: identity.email, createdAt: Timestamp.now() });
+        const fields = sessionFields(kind, body);
+        if (kind === 'chapca' && fields.metricsVersion === 2) {
+          const ref = collection.doc(digest(`training:${identity.uid}:${fields.clientRunId}`)), hash = digest(JSON.stringify(fields));
+          await db.runTransaction(async transaction => {
+            const existing = await transaction.get(ref);
+            if (existing.exists) { if (existing.data()?.payloadHash !== hash) throw new ApiError(409, 'Tur kaydı değiştirilemez.'); return; }
+            transaction.create(ref, { ...fields, userId: identity.uid, email: identity.email, createdAt: Timestamp.now(), payloadHash: hash });
+          });
+          return json({ id: ref.id }, 201);
+        }
+        const doc = await collection.add({ ...fields, userId: identity.uid, email: identity.email, createdAt: Timestamp.now() });
         return json({ id: doc.id }, 201);
       }
       if (method === 'GET') {

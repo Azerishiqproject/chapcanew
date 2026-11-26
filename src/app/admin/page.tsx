@@ -229,6 +229,8 @@ export default function AdminPage() {
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto w-full px-8 py-12 flex flex-col gap-10">
+          <button onClick={() => router.push('/admin/captcha')} className="mb-6 flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-300/25 bg-emerald-400/10 px-6 py-5 text-left text-white hover:bg-emerald-400/15"><span><strong className="block text-lg">CAPTCHA məşqçi paneli</strong><span className="mt-1 block text-sm text-emerald-100/70">İstifadəçiləri say, növ, həll şərti və müddətə görə müqayisə edin.</span></span><span className="rounded-xl bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950">Analitikanı aç</span></button>
+
 
           <div className="flex justify-end"><button onClick={() => router.push('/admin/aim')} className="rounded-xl border border-orange-400/20 bg-orange-400/10 px-5 py-3 text-sm font-semibold text-orange-200">Oyuncu karşılaştırması · Direct Aim</button></div>
 

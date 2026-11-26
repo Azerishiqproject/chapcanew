@@ -1,9 +1,11 @@
+import type { CaptchaQuestion, CaptchaCondition } from './captcha-metrics';
+import type { CaptchaType } from './captcha-config';
 import { Timestamp } from 'firebase/firestore';
 import { api, errorMessage, type PageCursor } from './api-client';
 
 export type ChapcaType = 'tarih' | 'dogum' | 'text' | 'rakam' | 'puzzle';
 export interface ChapcaAttempt {
-  type: ChapcaType;
+  type: ChapcaType; questionIndex?: number; attemptIndex?: number; condition?: CaptchaCondition;
   startTime: Timestamp;
   endTime: Timestamp;
   duration: number; // milisaniye cinsinden
@@ -12,6 +14,7 @@ export interface ChapcaAttempt {
 }
 
 export interface ChapcaSession {
+  metricsVersion?: number; clientRunId?: string; status?: 'completed' | 'aborted'; plan?: CaptchaType[]; order?: 'sequential' | 'random'; captchaQuestions?: CaptchaQuestion[];
   email: string;
   startTime: Timestamp;
   endTime: Timestamp;
@@ -21,9 +24,9 @@ export interface ChapcaSession {
   createdAt: Timestamp;
 }
 
-export async function saveChapcaSession(session: Omit<ChapcaSession, 'createdAt'>) {
+export async function saveChapcaSession(session: Omit<ChapcaSession, 'createdAt'>, keepalive = false) {
   try {
-    const result = await api<{ id: string }>('sessions/chapca', 'POST', session);
+    const result = await api<{ id: string }>('sessions/chapca', 'POST', session, { keepalive });
     return { id: result.id, error: null };
   } catch (error) { return { id: null, error: errorMessage(error) }; }
 }

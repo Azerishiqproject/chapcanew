@@ -12,7 +12,8 @@
     "test:integration": "tsx --test tests/auth.integration.test.ts",
     "test:captcha": "tsx --test tests/captcha.test.ts tests/captcha-components.test.tsx",
     "test:sales": "tsx --test tests/sales.test.ts tests/sales-telemetry.test.ts tests/sales-components.test.tsx",
-    "test:aim": "tsx --test tests/aim.test.ts tests/aim-audio.test.ts tests/aim-training.test.ts tests/aim-direct.test.ts tests/aim-viewport.test.ts"
+    "test:aim": "tsx --test tests/aim.test.ts tests/aim-audio.test.ts tests/aim-training.test.ts tests/aim-direct.test.ts tests/aim-viewport.test.ts",
+    "test:analytics": "tsx --test tests/captcha-analytics.test.ts tests/captcha-analytics-components.test.tsx"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.11.1",

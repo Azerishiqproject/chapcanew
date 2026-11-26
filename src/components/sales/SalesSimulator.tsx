@@ -23,6 +23,7 @@ import PersonalInfoCaptcha from '@/components/PersonalInfoCaptcha';
 import SalesCompletion from './SalesCompletion';
 import SalesAddressFields from './SalesAddressFields';
 import { SalesRecorder } from '@/lib/sales-recorder';
+import type { CaptchaCondition } from '@/lib/captcha-metrics';
 import type { SalesAction } from '@/lib/sales-telemetry';
 import styles from './sales.module.css';
 
@@ -107,8 +108,10 @@ export default function SalesSimulator() {
   }, []);
   useEffect(() => {
     if (!run) return;
+    run.sequence.visibility(document.visibilityState === 'visible');
+    track({ type: 'visibility', visible: document.visibilityState === 'visible' });
     const timer = setInterval(() => { void flush(); }, 3000);
-    const visibility = () => { track({ type: 'visibility', visible: document.visibilityState === 'visible' }); void flush(); };
+    const visibility = () => { run.sequence.visibility(document.visibilityState === 'visible'); track({ type: 'visibility', visible: document.visibilityState === 'visible' }); void flush(); };
     const leave = () => { void run.recorder.finish('navigation').catch(() => {}); };
     window.addEventListener('pagehide', leave); document.addEventListener('visibilitychange', visibility);
     return () => { clearInterval(timer); window.removeEventListener('pagehide', leave); document.removeEventListener('visibilitychange', visibility); catalogController.current?.abort(); leave(); recorderRef.current = null; };
@@ -206,15 +209,16 @@ export default function SalesSimulator() {
     else if (phase === 'method' && method) gated('method');
     else if (phase === 'search' && result) finish();
   }
+  function captchaReady(condition: CaptchaCondition) { if (run) track({ type: 'captcha-condition', index: run.sequence.progress, condition }); }
   function renderCaptcha(type: CaptchaType) {
     if (!run) return null;
     const config = run.settings, key = `${progress}-${captchaKey}`;
-    if (type === 'date') return <DateCaptcha key={key} correctDate={config.dateConfig.todayDate} onVerify={verify} />;
-    if (type === 'birthdate') return <BirthDateCaptcha key={key} correctDate={config.dateConfig.birthDate} onVerify={verify} />;
-    if (type === 'puzzle') return <PuzzleCaptcha key={key} onVerify={verify} />;
-    if (type === 'number') return <NumberCaptcha key={key} onVerify={verify} />;
-    if (type === 'text') return <TextCaptcha key={key} onVerify={verify} />;
-    return <PersonalInfoCaptcha key={key} type={type} correctAnswer={config.personalConfig[type]} onVerify={verify} />;
+    if (type === 'date') return <DateCaptcha key={key} correctDate={config.dateConfig.todayDate} onVerify={verify} onReady={captchaReady} />;
+    if (type === 'birthdate') return <BirthDateCaptcha key={key} correctDate={config.dateConfig.birthDate} onVerify={verify} onReady={captchaReady} />;
+    if (type === 'puzzle') return <PuzzleCaptcha key={key} onVerify={verify} onReady={captchaReady} />;
+    if (type === 'number') return <NumberCaptcha key={key} onVerify={verify} onReady={captchaReady} />;
+    if (type === 'text') return <TextCaptcha key={key} onVerify={verify} onReady={captchaReady} />;
+    return <PersonalInfoCaptcha key={key} type={type} correctAnswer={config.personalConfig[type]} onVerify={verify} onReady={captchaReady} />;
   }
   if (!run) return <div className={styles.loading}>{settingsError ? <div role="alert">{settingsError}<a href="/demo">CAPTCHA ayarlarına qayıt</a><button onClick={() => window.location.reload()}>Yenidən yoxla</button></div> : 'Yüklənir...'}</div>;
   const searching = phase === 'search', complete = phase === 'complete';

@@ -22,6 +22,7 @@ function event(value: unknown): SalesEvent {
     case 'reset': return { ...base, type: input.type };
     case 'catalog': if (!['loading', 'ready', 'error'].includes(String(input.status))) break; return { ...base, type: input.type, projectId: text(input.projectId, 30), building: text(input.building, 30), status: input.status as 'loading' | 'ready' | 'error' };
     case 'captcha-open': case 'captcha-close': case 'captcha-retry': return { ...base, type: input.type, index: integer(input.index, 4) };
+    case 'captcha-condition': { const data = record(input.condition); return { ...base, type: input.type, index: integer(input.index, 4), condition: { variant: text(data.variant, 20) as import('../captcha-metrics').CaptchaCondition['variant'], ...(data.inputLength === undefined ? {} : { inputLength: integer(data.inputLength, 40) }) } }; }
     case 'captcha-result': return { ...base, type: input.type, index: integer(input.index, 4), correct: boolean(input.correct) };
     case 'visibility': return { ...base, type: input.type, visible: boolean(input.visible) };
     case 'finish': if (!['selected', 'navigation', 'logout', 'recovered'].includes(String(input.reason))) break; return { ...base, type: input.type, reason: input.reason as 'selected' | 'navigation' | 'logout' | 'recovered' };
@@ -43,6 +44,7 @@ export async function startSalesRun(identity: Identity, input: Record<string, un
   await db.runTransaction(async transaction => {
     if ((await transaction.get(ref)).exists) return;
     const now = Timestamp.now(), state = initialSalesRuntime();
+    if (input.metricsVersion !== 2) state.metricsVersion = 1;
     transaction.create(ref, { schemaVersion: 2, userId: identity.uid, email: identity.email, clientRunId: clientId,
       createdAt: now, startTime: now, updatedAt: now, endTime: null, ...salesSummary(state), runtimeState: state, nextBatchIndex: 0,
       captchaConfig: { enabled: settings.enabled, requiredCount: settings.requiredCount, allowedTypes: settings.allowedTypes, plan } });
@@ -96,6 +98,6 @@ export async function salesRunEvents(identity: Identity, id: string, cursor: str
 }
 export async function salesOverview(identity: Identity, email: string) {
   requireAdmin(identity);
-  const rows = await adminServices().db.collection('salesSessions').where('email', '==', email).select('schemaVersion', 'status', 'totalDuration', 'step1Duration', 'step2Duration', 'captchaDuration', 'correctCaptchas', 'incorrectCaptchas', 'phaseDurations', 'captchaTypes', 'searches', 'resets', 'backCount', 'catalogErrors').get();
+  const rows = await adminServices().db.collection('salesSessions').where('email', '==', email).select('metricsVersion', 'schemaVersion', 'status', 'totalDuration', 'step1Duration', 'step2Duration', 'captchaDuration', 'correctCaptchas', 'incorrectCaptchas', 'phaseDurations', 'captchaTypes', 'searches', 'resets', 'backCount', 'catalogErrors').get();
   return summarizeSalesSessions(rows.docs.map(doc => doc.data()));
 }

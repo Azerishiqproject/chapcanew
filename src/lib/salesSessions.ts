@@ -1,3 +1,4 @@
+import type { CaptchaQuestion } from './captcha-metrics';
 import type { SalesOverview } from './sales-analytics';
 import type { RecordedSalesEvent, SalesStage } from './sales-telemetry';
 import type { CaptchaChallenge } from './sales-flow';
@@ -8,6 +9,7 @@ import { Timestamp } from 'firebase/firestore';
 import { api, errorMessage, type PageCursor } from './api-client';
 
 export interface SalesSession {
+    metricsVersion?: number; captchaQuestions?: CaptchaQuestion[]; captchaWallDurationMs?: number; interactionDurationMs?: number;
     email: string;
     startTime: Timestamp;
     endTime: Timestamp | null;
@@ -43,6 +45,6 @@ export async function getUserSalesSessions(email: string, pageSize = 10, lastDoc
   } catch (error) { return { sessions: [], lastDoc: null, error: errorMessage(error) }; }
 }
 
-export function startSalesRun(clientRunId: string, plan: CaptchaChallenge[]) { return api<{ id: string }>('sales/runs', 'POST', { clientRunId, plan }); }
+export function startSalesRun(clientRunId: string, plan: CaptchaChallenge[]) { return api<{ id: string }>('sales/runs', 'POST', { clientRunId, plan, metricsVersion: 2 }); }
 export function getSalesOverview(email: string) { return api<SalesOverview>(`sales/overview?${new URLSearchParams({ email })}`); }
 export function getSalesEvents(id: string, cursor: string | null = null) { return api<{ events: RecordedSalesEvent[]; cursor: string | null; legacy: boolean }>(`sales/runs/${id}/events${cursor ? '?' + new URLSearchParams({ cursor }) : ''}`); }

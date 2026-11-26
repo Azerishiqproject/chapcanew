@@ -1,11 +1,12 @@
 'use client';
+import type { CaptchaCondition } from '@/lib/captcha-metrics';
 import { useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import { createPuzzleChallenge, PUZZLE, puzzleMatches, puzzlePosition } from '@/lib/puzzle-challenge';
 import { useCaptchaFeedback } from './useCaptchaFeedback';
 
 interface Drag { pointer: number; clientX: number; start: number; travelCss: number; moved: boolean }
-export default function PuzzleCaptcha({ onVerify }: { onVerify?: (correct: boolean) => void }) {
+export default function PuzzleCaptcha({ onVerify, onReady }: { onVerify?: (correct: boolean) => void; onReady?: (condition: CaptchaCondition) => void }) {
   const helpId = useId();
   const [challenge, setChallenge] = useState(createPuzzleChallenge);
   const [position, setPosition] = useState(0);
@@ -13,7 +14,7 @@ export default function PuzzleCaptcha({ onVerify }: { onVerify?: (correct: boole
   const track = useRef<HTMLDivElement>(null), drag = useRef<Drag | null>(null);
   const currentPosition = useRef(0), keyboardMoved = useRef(false);
   function updatePosition(next: number) { currentPosition.current = next; setPosition(next); }
-  const { blocked, error, submit } = useCaptchaFeedback(onVerify, () => { setChallenge(createPuzzleChallenge()); updatePosition(0); keyboardMoved.current = false; });
+  const { blocked, error, submit } = useCaptchaFeedback(onVerify, () => { setChallenge(createPuzzleChallenge()); updatePosition(0); keyboardMoved.current = false; }, () => onReady?.({ variant: challenge.x - PUZZLE.startX < 100 ? 'short' : challenge.x - PUZZLE.startX < 180 ? 'medium' : 'long' }));
   const ratio = position / PUZZLE.travel;
   function verify(next: number) { const correct = puzzleMatches(challenge, next); setSuccess(correct); submit(correct, 'Parça boşluğa uyğun gəlmədi. Yenidən sınayın.'); }
   function start(event: PointerEvent<HTMLDivElement>) {

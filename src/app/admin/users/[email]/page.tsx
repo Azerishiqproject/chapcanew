@@ -5,26 +5,23 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { logoutUser } from '@/store/slices/authSlice';
 import { getUserByEmail, User as UserType } from '@/lib/users';
-import { getUserChapcaSessions, ChapcaSession } from '@/lib/chapcaSessions';
+import { api } from '@/lib/api-client';
+import type { CaptchaDataset } from '@/lib/captcha-analytics';
+import CaptchaAnalyticsPanel from '@/components/analytics/CaptchaAnalyticsPanel';
 import { getAimOverview, type AimOverview } from '@/lib/aimSessions';
 import AimAnalyticsPanel from '@/components/AimAnalyticsPanel';
 import { getSalesOverview, type SalesOverview } from '@/lib/salesSessions';
 import SalesAnalyticsPanel from '@/components/SalesAnalyticsPanel';
-import { Timestamp } from 'firebase/firestore';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   ArrowLeft,
   Mail,
   Phone,
-  Shield,
   Calendar,
-  Clock,
   Activity,
   ShoppingCart,
-  Search,
   ShieldCheck,
   Target,
-  ChevronDown,
   LogOut,
   User as UserIcon
 } from 'lucide-react';
@@ -37,12 +34,11 @@ export default function UserDetailPage() {
   const userEmail = params.email as string;
 
   const [user, setUserData] = useState<UserType | null>(null);
-  const [chapcaSessions, setChapcaSessions] = useState<(ChapcaSession & { id: string })[]>([]);
+  const [chapcaStats, setChapcaStats] = useState({ totalSessions: 0, correctAttempts: 0, wrongAttempts: 0, totalDuration: 0 });
   const [aimOverview, setAimOverview] = useState<AimOverview | null>(null);
   const [salesOverview, setSalesOverview] = useState<SalesOverview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'info' | 'chapca' | 'aim' | 'sales'>('info');
-  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
 
   const [mounted, setMounted] = useState(false);
 
@@ -83,13 +79,11 @@ export default function UserDetailPage() {
       }
       setUserData(userResult.user);
 
-      // Load chapca sessions
-      const chapcaResult = await getUserChapcaSessions(decodeURIComponent(userEmail));
-      if (chapcaResult.error) {
-        console.error('Error loading chapca sessions:', chapcaResult.error);
-      } else {
-        setChapcaSessions(chapcaResult.sessions);
-      }
+      try {
+        const data = await api<CaptchaDataset>(`captcha/analytics?${new URLSearchParams({ email: decodeURIComponent(userEmail) })}`);
+        const runs = data.runs.filter(run => run.source === 'training');
+        setChapcaStats({ totalSessions: runs.length, correctAttempts: runs.reduce((n, run) => n + run.correct, 0), wrongAttempts: runs.reduce((n, run) => n + run.incorrect, 0), totalDuration: runs.reduce((n, run) => n + run.durationMs, 0) });
+      } catch (error) { console.error('CAPTCHA overview could not be loaded:', error); }
 
       try { setAimOverview(await getAimOverview(decodeURIComponent(userEmail))); }
       catch (error) { console.error('Aim overview could not be loaded:', error); }
@@ -109,41 +103,12 @@ export default function UserDetailPage() {
     router.push('/login');
   };
 
-  const formatDateTime = (timestamp: Timestamp): string => {
-    const date = timestamp.toDate();
-    return date.toLocaleString('az-AZ', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
   const formatDuration = (milliseconds: number): string => {
     const totalSeconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     const ms = milliseconds % 1000;
     return `${minutes}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(1, '0')}`;
-  };
-
-  // Calculate statistics
-  const chapcaStats = {
-    totalSessions: chapcaSessions.length,
-    correctAttempts: chapcaSessions.reduce((sum, s) => sum + s.chapcas.filter(c => c.isCorrect).length, 0),
-    wrongAttempts: chapcaSessions.reduce((sum, s) => sum + s.chapcas.filter(c => !c.isCorrect).length, 0),
-    totalDuration: chapcaSessions.reduce((sum, s) => sum + (s.totalDuration || 0), 0),
-  };
-
-
-  const toggleSession = (sessionId: string) => {
-    setExpandedSessions(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(sessionId)) newSet.delete(sessionId);
-      else newSet.add(sessionId);
-      return newSet;
-    });
   };
 
   if (!mounted || authLoading || isLoading) {
@@ -257,7 +222,7 @@ export default function UserDetailPage() {
             <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-1.5 border border-white/10 inline-flex flex-wrap shadow-xl self-start">
               {[
                 { id: 'info', label: 'Statistika', icon: Activity },
-                { id: 'chapca', label: `Security (${chapcaSessions.length})`, icon: ShieldCheck },
+                { id: 'chapca', label: `Security (${chapcaStats.totalSessions})`, icon: ShieldCheck },
                 { id: 'aim', label: `Direct Aim (${aimOverview?.totalPlays ?? 0})`, icon: Target },
                 { id: 'sales', label: `Sales (${salesOverview?.totalPlays ?? '—'})`, icon: ShoppingCart }
               ].map((tab) => (
@@ -287,7 +252,7 @@ export default function UserDetailPage() {
                         <p className="text-xl font-black italic mt-1">{chapcaStats.totalSessions}</p>
                       </div>
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">Düzgünlük</span>
+                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">Doğru CAPTCHA</span>
                         <p className="text-xl font-black italic mt-1 text-green-500">{chapcaStats.correctAttempts}</p>
                       </div>
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
@@ -343,8 +308,8 @@ export default function UserDetailPage() {
                         <p className="text-xl font-black italic mt-1">{salesOverview?.averageDurationMs != null ? (salesOverview.averageDurationMs / 1000).toFixed(1) + 's' : '—'}</p>
                       </div>
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">AVG Captcha</span>
-                        <p className="text-xl font-black italic mt-1 text-yellow-500">{salesOverview?.averageCaptchaMs != null ? (salesOverview.averageCaptchaMs / 1000).toFixed(1) + 's' : '—'}</p>
+                        <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">CAPTCHA / həll · yeni ölçüm</span>
+                        <p className="text-xl font-black italic mt-1 text-yellow-500">{salesOverview?.averageCaptchaPerSolveMs != null ? (salesOverview.averageCaptchaPerSolveMs / 1000).toFixed(1) + 's' : '—'}</p>
                       </div>
                       <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                         <span className="text-[10px] font-black text-white/30 uppercase tracking-[2px]">Doğru CAPTCHA</span>
@@ -355,64 +320,7 @@ export default function UserDetailPage() {
                 </div>
               )}
 
-              {/* Chapca List */}
-              {activeTab === 'chapca' && (
-                <div className="space-y-4">
-                  {chapcaSessions.length === 0 ? (
-                    <div className="bg-white/5 rounded-[40px] p-32 text-center border border-dashed border-white/10">
-                      <Search className="mx-auto mb-6 text-white/10" size={64} />
-                      <p className="text-white/20 font-black uppercase tracking-[6px]">Seans tapılmadı</p>
-                    </div>
-                  ) : (
-                    chapcaSessions.map((session) => {
-                      const isExpanded = expandedSessions.has(session.id);
-                      return (
-                        <div key={session.id} className="group">
-                          <div
-                            onClick={() => toggleSession(session.id)}
-                            className={`bg-white/5 border border-white/10 p-5 flex flex-col sm:flex-row items-center justify-between cursor-pointer transition-all duration-500 hover:bg-white/10 ${isExpanded ? 'rounded-t-[24px] border-[#00965e]/40 shadow-2xl bg-white/[0.08]' : 'rounded-[24px]'}`}
-                          >
-                            <div className="flex items-center gap-6 mb-4 sm:mb-0">
-                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${isExpanded ? 'bg-[#00965e] text-white' : 'bg-[#00965e]/10 text-[#00965e]'}`}>
-                                <ShieldCheck size={24} />
-                              </div>
-                              <div>
-                                <p className="text-white font-black text-lg tracking-tight">{formatDateTime(session.createdAt)}</p>
-                                <p className="text-[10px] font-black text-white/30 uppercase tracking-[2px] mt-1">{session.chapcas.length} CAPTCHA Verifikasiyası</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-8">
-                              <div className="text-right">
-                                <p className="text-[9px] font-black text-white/20 uppercase tracking-[2px] mb-1 px-1">Müddət</p>
-                                <p className="text-xl font-black text-white tabular-nums italic">{formatDuration(session.totalDuration || 0)}s</p>
-                              </div>
-                              <div className={`w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-[#00965e]/20 transition-all ${isExpanded ? 'rotate-180 bg-[#00965e]/20' : ''}`}>
-                                <ChevronDown size={18} className={isExpanded ? 'text-[#00965e]' : 'text-white/20'} />
-                              </div>
-                            </div>
-                          </div>
-                          {isExpanded && (
-                            <div className="bg-white/[0.04] rounded-b-[24px] border-x border-b border-[#00965e]/20 p-6 animate-in slide-in-from-top-4 duration-500">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {session.chapcas.map((cap, idx) => (
-                                  <div key={idx} className={`p-4 rounded-2xl border transition-all hover:scale-[1.02] ${cap.isCorrect ? 'bg-green-500/5 border-green-500/10' : 'bg-red-500/5 border-red-500/10'}`}>
-                                    <div className="flex justify-between items-start mb-3">
-                                      <span className="text-[9px] font-black uppercase tracking-[2px] text-white/30">{cap.type}</span>
-                                      <div className={`w-2 h-2 rounded-full ${cap.isCorrect ? 'bg-green-500' : 'bg-red-500'}`} />
-                                    </div>
-                                    <p className="text-[15px] font-black mb-1">{cap.isCorrect ? 'Uğurlu' : 'Uğursuz'}</p>
-                                    <p className="text-[11px] font-bold text-white/20 italic">{formatDuration(cap.duration)}s</p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
+              {activeTab === 'chapca' && <CaptchaAnalyticsPanel key={userEmail} email={decodeURIComponent(userEmail)} source="training" onDataset={data => { const runs = data.runs.filter(run => run.source === 'training'); setChapcaStats({ totalSessions: runs.length, correctAttempts: runs.reduce((n, run) => n + run.correct, 0), wrongAttempts: runs.reduce((n, run) => n + run.incorrect, 0), totalDuration: runs.reduce((n, run) => n + run.durationMs, 0) }); }} />}
 
               {activeTab === 'aim' && <AimAnalyticsPanel email={decodeURIComponent(userEmail)} />}
 

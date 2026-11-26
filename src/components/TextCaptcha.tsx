@@ -1,10 +1,12 @@
 'use client';
 
+import type { CaptchaCondition } from '@/lib/captcha-metrics';
 import { useState, useRef, useEffect } from 'react';
 import { matchesAnswer } from '@/lib/captcha-config';
 import { useCaptchaFeedback } from './useCaptchaFeedback';
 
 interface TextCaptchaProps {
+  onReady?: (condition: CaptchaCondition) => void;
   onVerify?: (isCorrect: boolean) => void;
 }
 
@@ -17,12 +19,12 @@ function generateRandomText(length: number = 5): string {
   return result;
 }
 
-export default function TextCaptcha({ onVerify }: TextCaptchaProps) {
+export default function TextCaptcha({ onVerify, onReady }: TextCaptchaProps) {
   const [userInput, setUserInput] = useState<string>('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [captchaText, setCaptchaText] = useState<string>(() => generateRandomText(5));
 
-  const { blocked, error, submit, clearError } = useCaptchaFeedback(onVerify, () => { setUserInput(''); setCaptchaText(generateRandomText(5)); });
+  const { blocked, error, submit, clearError } = useCaptchaFeedback(onVerify, () => { setUserInput(''); setCaptchaText(generateRandomText(5)); }, () => onReady?.({ variant: 'standard', inputLength: 5 }));
 
   useEffect(() => {
     if (!canvasRef.current || !captchaText) return;

@@ -160,10 +160,10 @@ for (const random of [0, .25, .5, .75]) for (const [label, Component] of [['date
       assert.match(view.getByRole('note').textContent!, /ayarlarda saxladığınız tarix/);
     }
     const editable = DATE_PARTS.filter(part => part !== expected.fixed);
-    assert.equal(view.getByRole('group', { name: DATE_LABELS[editable[0]], exact: true }).getAttribute('aria-current'), 'step');
+    assert.equal(view.getByRole('group', { name: DATE_LABELS[editable[0]] }).getAttribute('aria-current'), 'step');
     const digits = editable.map(part => expected.values[part]).join('');
     for (const digit of digits) {
-      ui.fireEvent.click(view.getByRole('button', { name: digit, exact: true }));
+      ui.fireEvent.click(view.getByRole('button', { name: digit }));
       view.rerender(<Component correctDate="16.12.2026" onVerify={value => answers.push(value)} />);
     }
     assert.deepEqual(answers, [true]);
@@ -221,4 +221,26 @@ test('Puzzle type round-trips through user settings without requiring date or pe
   assert.equal((view.getByRole('checkbox', { name: 'Şəkil sürüşdürmə Captcha' }) as HTMLInputElement).checked, true);
   ui.fireEvent.click(view.getByRole('button', { name: 'Yadda saxla' }));
   await ui.waitFor(() => assert.equal(writes.length, 1)); assert.deepEqual(writes[0].allowedTypes, ['puzzle']);
+});
+
+test('Ready metadata starts each attempt once after rendering, preserves timing on rerenders, and waits for feedback before retry', context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] }); context.mock.method(Math, 'random', () => 0);
+  const ready: unknown[] = [], answers: boolean[] = [];
+  const props = { onReady: (condition: unknown) => ready.push(condition), onVerify: (correct: boolean) => answers.push(correct) };
+  const view = ui.render(<NumberCaptcha {...props} />);
+  assert.deepEqual(ready, [{ variant: 'standard', inputLength: 6 }]);
+  for (let i = 0; i < 5; i++) view.rerender(<NumberCaptcha {...props} />);
+  assert.equal(ready.length, 1);
+  enterDigits(view, '000000'); assert.deepEqual(answers, [false]);
+  ui.act(() => context.mock.timers.tick(1499)); assert.equal(ready.length, 1);
+  ui.act(() => context.mock.timers.tick(1)); assert.equal(ready.length, 2);
+  enterDigits(view, '100000'); assert.deepEqual(answers, [false, true]); assert.equal(ready.length, 2);
+});
+test('Date metadata describes the actual ready variant after a retry without exposing the expected date', context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] }); let random = .75; context.mock.method(Math, 'random', () => random);
+  const ready: unknown[] = [];
+  const view = ui.render(<DateCaptcha correctDate="29/02/2000" onReady={condition => ready.push(condition)} />);
+  assert.deepEqual(ready, [{ variant: 'year', inputLength: 4 }]);
+  enterDigits(view, '2802'); random = .5; ui.act(() => context.mock.timers.tick(1500));
+  assert.deepEqual(ready.at(-1), { variant: 'month', inputLength: 6 }); assert.equal(JSON.stringify(ready).includes('2000'), false);
 });

@@ -1,5 +1,6 @@
 'use client';
 
+import type { CaptchaCondition } from '@/lib/captcha-metrics';
 import { useState } from 'react';
 import { matchesAnswer } from '@/lib/captcha-config';
 import { useCaptchaFeedback } from './useCaptchaFeedback';
@@ -9,6 +10,7 @@ type PersonalCaptchaType = 'fin' | 'religion' | 'favoriteCar';
 interface PersonalInfoCaptchaProps {
   type: PersonalCaptchaType;
   correctAnswer: string;
+  onReady?: (condition: CaptchaCondition) => void;
   onVerify?: (isCorrect: boolean) => void;
 }
 
@@ -31,9 +33,10 @@ export default function PersonalInfoCaptcha({
   type,
   correctAnswer,
   onVerify,
+  onReady,
 }: PersonalInfoCaptchaProps) {
   const [value, setValue] = useState('');
-  const { blocked, error, submit, clearError } = useCaptchaFeedback(onVerify, () => setValue(''));
+  const { blocked, error, submit, clearError } = useCaptchaFeedback(onVerify, () => setValue(''), () => onReady?.({ variant: 'standard', inputLength: correctAnswer.trim().length }));
   const copy = captchaCopy[type];
   const isFin = type === 'fin';
   const isComplete = isFin ? value.length === 7 : value.trim().length > 0;

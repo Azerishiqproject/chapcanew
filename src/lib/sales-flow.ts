@@ -47,16 +47,23 @@ export class CaptchaSequence {
   readonly logs: { type: CaptchaType; duration: number }[] = [];
   private startedAt: number | null = null;
   private spentMs = 0;
+  private visible = true;
   constructor(readonly plan: readonly CaptchaChallenge[], private now: () => number = () => Date.now()) {}
   get current() { return this.plan[this.progress]; }
   open(step: 1 | 2) {
     if (this.current?.step !== step) return false;
-    if (this.status === 'idle') { this.status = 'answering'; this.startedAt = this.now(); }
+    if (this.status === 'idle') { this.status = 'answering'; this.startedAt = this.visible ? this.now() : null; }
     return this.status === 'answering';
   }
   private pause() {
     if (this.startedAt !== null) this.spentMs += Math.max(0, this.now() - this.startedAt);
     this.startedAt = null;
+  }
+  visibility(visible: boolean) {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    if (this.status !== 'answering') return;
+    if (visible) this.startedAt = this.now(); else this.pause();
   }
   close() {
     if (this.status !== 'answering') return false;
@@ -71,7 +78,7 @@ export class CaptchaSequence {
   }
   retry() {
     if (this.status !== 'wrong') return;
-    this.status = 'answering'; this.startedAt = this.now();
+    this.status = 'answering'; this.startedAt = this.visible ? this.now() : null;
   }
   advance() {
     if (this.status !== 'correct') return false;

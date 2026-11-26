@@ -1,3 +1,4 @@
+import { addQuestionAttempt, validCondition, legacyType, type CaptchaQuestion } from '../captcha-metrics';
 import { CAPTCHA_TYPES, captchaSettingsErrors, normalizeCaptchaSettings, type CaptchaState } from '@/lib/captcha-config';
 import { Timestamp, type DocumentData, type DocumentSnapshot } from 'firebase-admin/firestore';
 import { ApiError, emailAddress, record, text } from './security';
@@ -55,6 +56,26 @@ export function sessionFields(kind: SessionKind, input: Record<string, unknown>)
       }
       return { ...times(attempt), type: attempt.type, isCorrect: attempt.isCorrect, duration: number(attempt.duration), durationSeconds: number(attempt.durationSeconds) };
     });
+    if (input.metricsVersion === 2) {
+      if ((input.chapcas as unknown[]).length > 200) throw new ApiError(400, 'Antrenman cəhd həddi aşıldı.');
+      const allowed = ['date', 'birthdate', 'text', 'number', 'puzzle'];
+      if (!Array.isArray(input.plan) || !input.plan.length || input.plan.length > 50 || input.plan.some(type => !allowed.includes(String(type))) || !['completed', 'aborted'].includes(String(input.status)) || !['sequential', 'random'].includes(String(input.order))) throw new ApiError(400, 'Geçersiz antrenman planı.');
+      const questions: CaptchaQuestion[] = []; let progress = 0, previousEnd = result.startTime.toMillis();
+      result.chapcas = result.chapcas.map((attempt: DocumentData, index: number) => {
+        const raw = record((input.chapcas as unknown[])[index]), type = legacyType(String(attempt.type));
+        const question = questions.find(item => item.index === progress);
+        if (!type || type !== (input.plan as unknown[])[progress] || raw.questionIndex !== progress || raw.attemptIndex !== (question?.attempts ?? 0) || attempt.startTime.toMillis() < previousEnd || attempt.endTime.toMillis() > result.endTime.toMillis() || attempt.duration > attempt.endTime.toMillis() - attempt.startTime.toMillis()) throw new ApiError(400, 'Antrenman sırası veya süresi uyuşmuyor.');
+        let condition;
+        try { condition = validCondition(type, raw.condition); addQuestionAttempt(questions, progress, type, attempt.duration, attempt.isCorrect, condition); } catch { throw new ApiError(400, 'Geçersiz CAPTCHA ölçümü.'); }
+        previousEnd = attempt.endTime.toMillis();
+        if (attempt.isCorrect) progress++;
+        return { ...attempt, durationSeconds: attempt.duration / 1000, questionIndex: raw.questionIndex, attemptIndex: raw.attemptIndex, condition };
+      });
+      if (input.status === 'completed' && progress !== input.plan.length) throw new ApiError(400, 'Antrenman tamamlanmadı.');
+      const runId = text(input.clientRunId, 80); if (!/^[A-Za-z0-9_-]{8,80}$/.test(runId)) throw new ApiError(400, 'Geçersiz tur kimliği.');
+      const duration = result.endTime.toMillis() - result.startTime.toMillis(); if (duration > 12 * 60 * 60 * 1000) throw new ApiError(400, 'Tur süresi aşıldı.');
+      Object.assign(result, { clientRunId: runId, metricsVersion: 2, status: input.status, order: input.order, plan: input.plan, captchaQuestions: questions, totalDuration: duration, totalDurationSeconds: duration / 1000 });
+    }
   } else if (kind === 'aim') {
     if (!['normal', 'drag-drop', 'dual-targets', 'moving-targets'].includes(String(input.gameMode))) throw new ApiError(400, 'Geçersiz oyun modu.');
     result.gameMode = input.gameMode;

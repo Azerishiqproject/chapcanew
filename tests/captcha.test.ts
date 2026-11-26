@@ -103,3 +103,10 @@ test('Puzzle geometry clamps movement and uses the same tolerance at different s
   assert.equal(puzzlePosition(0, -100, 300), 0); assert.equal(puzzlePosition(0, 500, 300), PUZZLE.travel);
   assert.equal(puzzlePosition(5, 100, 0), 5); assert.equal(puzzleMatches({ x: 120, y: 60 }, NaN), false);
 });
+
+test('Player completion time and coach active time both pause when the sales tab is hidden', () => {
+  let now = 0; const sequence = new CaptchaSequence([{ type: 'number', step: 1 }], () => now);
+  sequence.open(1); now = 1000; sequence.visibility(false); now = 11000; sequence.visibility(true); now = 13000;
+  sequence.answer(false); now = 14500; sequence.retry(); now = 16500; sequence.answer(true);
+  assert.deepEqual(sequence.logs, [{ type: 'number', duration: 5 }]);
+});

@@ -1,4 +1,5 @@
 'use client';
+import type { CaptchaCondition } from '@/lib/captcha-metrics';
 import { useState } from 'react';
 import { matchesAnswer, dateText } from '@/lib/captcha-config';
 import { createDateChallenge, dateEntryParts, dateInputLength, enteredDate, DATE_PARTS, DATE_LABELS, DATE_WIDTHS } from '@/lib/date-challenge';
@@ -18,14 +19,14 @@ const DigitBox = ({ value, fixed = false }: { value: string; fixed?: boolean }) 
     </div>
   );
 
-interface Props { mode: 'date' | 'birthdate' | 'number'; correctDate?: string; onVerify?: (correct: boolean) => void }
-export default function NumericCaptcha({ mode, correctDate, onVerify }: Props) {
+interface Props { mode: 'date' | 'birthdate' | 'number'; correctDate?: string; onVerify?: (correct: boolean) => void; onReady?: (condition: CaptchaCondition) => void }
+export default function NumericCaptcha({ mode, correctDate, onVerify, onReady }: Props) {
   const makeDate = () => mode === 'number' ? null : createDateChallenge(correctDate || (mode === 'date' ? dateText() : '25/08/1990'));
   const [challenge, setChallenge] = useState(makeDate);
   const [input, setInput] = useState('');
   const [target, setTarget] = useState(newNumber);
   const [keypadLayout, setKeypad] = useState(keypad);
-  const { blocked, error, submit, clearError } = useCaptchaFeedback(onVerify, () => { setInput(''); setTarget(newNumber()); setKeypad(keypad()); setChallenge(makeDate()); });
+  const { blocked, error, submit, clearError } = useCaptchaFeedback(onVerify, () => { setInput(''); setTarget(newNumber()); setKeypad(keypad()); setChallenge(makeDate()); }, () => onReady?.(challenge ? { variant: challenge.fixed ?? 'full', inputLength: dateInputLength(challenge) } : { variant: 'standard', inputLength: 6 }));
   const parts = challenge ? dateEntryParts(challenge, input) : null;
   const customDate = mode === 'date' && challenge?.expected !== dateText();
   const activePart = challenge ? DATE_PARTS.find(part => part !== challenge.fixed && (parts?.[part].length ?? 0) < DATE_WIDTHS[part]) : null;

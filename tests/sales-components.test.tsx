@@ -6,7 +6,7 @@ import SalesAnalyticsPanel from '../src/components/SalesAnalyticsPanel';
 import { addressOptions, changeAddress, emptyAddress, salesCatalog, type SalesAddress } from '../src/lib/sales-catalog';
 import { summarizeSalesSessions } from '../src/lib/sales-analytics';
 let ui: typeof import('@testing-library/react');
-before(async () => { const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' }); Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver, IS_REACT_ACT_ENVIRONMENT: true }); Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true }); ui = await import('@testing-library/react'); });
+before(async () => { const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' }); Object.assign(globalThis, { window: dom.window, self: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, MutationObserver: dom.window.MutationObserver, IS_REACT_ACT_ENVIRONMENT: true }); Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true }); ui = await import('@testing-library/react'); });
 afterEach(() => ui.cleanup());
 test('Native selects retain the same nodes/options across unrelated updates and follow dependent choices', () => {
   const changes: unknown[] = [], focus: string[] = [], onChange = (field: string, value: string) => changes.push([field, value]), onFocus = (field: string) => focus.push(field);
@@ -75,6 +75,7 @@ test('Admin shows all-history totals independent of displayed pages and reveals 
   const requests: string[] = [];
   context.mock.method(globalThis, 'fetch', async (input: string) => {
     requests.push(input);
+    if (input.includes('captcha/analytics')) return Response.json({ runs: [], generatedAt: Date.now() });
     if (input.includes('sales/overview')) return Response.json(stats);
     if (input.includes('/events')) return Response.json(input.includes('cursor=') ? { events: [{ seq: 1, atMs: 10000, type: 'finish', reason: 'selected', stage: 'search' }], cursor: null, legacy: false } : { events: [{ seq: 0, atMs: 9000, type: 'search', found: true, stage: 'search' }], cursor: '00000003', legacy: false });
     return Response.json(input.includes('cursor=') ? { sessions: [{ ...session, id: 'legacy-run', schemaVersion: undefined, totalDuration: 20000 }, ...Array.from({ length: 4 }, (_, i) => ({ ...session, id: `later-${i}`, project: '', status: 'playing', totalDuration: 0 }))], lastDoc: null } : { sessions: [session, ...Array.from({ length: 19 }, (_, i) => ({ ...session, id: `open-${i}`, project: '', status: 'playing', totalDuration: 0 }))], lastDoc: 'page-two' });

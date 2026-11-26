@@ -1,4 +1,5 @@
 'use client';
+import CaptchaAnalyticsPanel from './analytics/CaptchaAnalyticsPanel';
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Download, RefreshCw } from 'lucide-react';
 import { getSalesEvents, getSalesOverview, getUserSalesSessions, type SalesOverview, type SalesSession } from '@/lib/salesSessions';
@@ -22,6 +23,7 @@ export function salesEventText(event: RecordedSalesEvent) {
     case 'captcha-open': return `CAPTCHA ${event.index + 1}: ${labels[event.captchaType ?? ''] ?? ''} açıldı`;
     case 'captcha-close': return `CAPTCHA ${event.index + 1}: pəncərə bağlandı`;
     case 'captcha-retry': return `CAPTCHA ${event.index + 1}: yeni cəhd`;
+    case 'captcha-condition': return `CAPTCHA ${event.index + 1}: ${event.condition.variant}${event.condition.inputLength ? ` · ${event.condition.inputLength} simvol` : ''}`;
     case 'captcha-result': return `CAPTCHA ${event.index + 1} (${labels[event.captchaType ?? ''] ?? ''}): ${event.correct ? 'doğru' : 'yanlış'} · cəhd ${seconds(event.durationMs)}${event.solveDurationMs != null ? ` · ümumi həll ${seconds(event.solveDurationMs)}` : ''}`;
     case 'visibility': return event.visible ? 'Səhifə ön plana gəldi' : 'Səhifə arxa plana keçdi';
     case 'finish': return labels[event.reason];
@@ -57,6 +59,7 @@ function RunDetails({ session }: { session: SalesSession & { id: string } }) {
 }
 export default function SalesAnalyticsPanel({ email, initialOverview, onOverviewChange }: { email: string; initialOverview: SalesOverview | null; onOverviewChange: (value: SalesOverview) => void }) {
   const [overview, setOverview] = useState(initialOverview), [sessions, setSessions] = useState<(SalesSession & { id: string })[]>([]);
+  const [analysisRefresh, setAnalysisRefresh] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null), [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState(''); const alive = useRef(true);
   useEffect(() => {
@@ -71,20 +74,24 @@ export default function SalesAnalyticsPanel({ email, initialOverview, onOverview
     try {
       const [stats, page] = await Promise.all([getSalesOverview(email), getUserSalesSessions(email, 20, reset ? null : cursor)]);
       if (!alive.current) return; if (page.error) throw new Error(page.error);
-      setOverview(stats); onOverviewChange(stats); setSessions(previous => reset ? page.sessions : [...previous, ...page.sessions.filter(item => !previous.some(old => old.id === item.id))]); setCursor(page.sessions.length === 20 ? page.lastDoc : null); if (reset) setExpanded(null);
+      setOverview(stats); onOverviewChange(stats); setSessions(previous => reset ? page.sessions : [...previous, ...page.sessions.filter(item => !previous.some(old => old.id === item.id))]); setCursor(page.sessions.length === 20 ? page.lastDoc : null); if (reset) { setExpanded(null); setAnalysisRefresh(value => value + 1); }
     } catch (error) { if (alive.current) setError(errorMessage(error)); } finally { if (alive.current) setLoading(false); }
   }
   return <section className="space-y-6 text-white" aria-label="Satış demosu analitikası">
     <div className="flex items-center justify-between gap-3"><h3 className="text-xl font-bold">Satış demosu · bütün turlar</h3><button disabled={loading} onClick={() => void load(true)} className="flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm"><RefreshCw size={15} />Yenilə</button></div>
     {error && <p role="alert" className="rounded-xl bg-red-500/10 p-4 text-red-300">{error}</p>}
+    <CaptchaAnalyticsPanel email={email} source="sales" refreshKey={analysisRefresh} />
+    <details className="rounded-2xl border border-white/10 bg-white/5 p-4"><summary className="cursor-pointer text-sm font-semibold text-white/70">Tur, mərhələ və əməliyyat cəmləri</summary><div className="mt-4 space-y-4">
     {overview && <>
       <div className="grid gap-3 sm:grid-cols-4"><Metric label="Bütün başladılan turlar" value={overview.totalPlays} /><Metric label="Tamamlanan" value={overview.completedPlays} /><Metric label="Yarım saxlanılan" value={overview.abortedPlays} /><Metric label="Açıq / tamamlanmayan" value={overview.unfinishedPlays} /></div>
       <p className="text-sm text-white/50">Tur ortalaması bütün tamamlanmış qeydlərdən hesablanır. Mərhələ detalları yalnız yeni turlarda mövcuddur. CAPTCHA müddəti mərhələ vaxtlarının içindədir.</p>
       <div className="grid gap-3 sm:grid-cols-3"><Metric label="Ortalama tur" value={seconds(overview.averageDurationMs)} /><Metric label="Ən sürətli tur" value={seconds(overview.bestDurationMs)} /><Metric label="Ortalama CAPTCHA vaxtı / tur" value={seconds(overview.averageCaptchaMs)} /></div>
       <div className="grid gap-3 sm:grid-cols-4">{SALES_PHASES.map(phase => <Metric key={phase} label={`${labels[phase]} ortalaması`} value={seconds(overview.phaseAverages[phase])} />)}</div>
       <div className="grid gap-3 sm:grid-cols-4"><Metric label="CAPTCHA doğru / yanlış" value={`${overview.totalCorrect} / ${overview.totalIncorrect}`} /><Metric label="Doğruluq" value={overview.accuracy == null ? '—' : `${overview.accuracy.toFixed(1)}%`} /><Metric label="Axtarış / sıfırlama" value={`${overview.totalSearches} / ${overview.totalResets}`} /><Metric label="Geri dönüş / məlumat xətası" value={`${overview.totalBack} / ${overview.totalCatalogErrors}`} /></div>
-      {!!Object.keys(overview.captchaTypes).length && <div className={`${box} overflow-x-auto`}><h4 className="mb-3 font-bold">CAPTCHA növləri</h4><table className="w-full text-left text-sm"><thead className="text-white/50"><tr><th className="pb-2">Növ</th><th>Doğru</th><th>Yanlış</th><th>Ortalama həll</th></tr></thead><tbody>{Object.entries(overview.captchaTypes).map(([type, stats]) => <tr key={type} className="border-t border-white/5"><td className="py-2">{labels[type]}</td><td>{stats.correct}</td><td>{stats.incorrect}</td><td>{seconds(stats.averageSolveMs)}</td></tr>)}</tbody></table></div>}
+
     </>}
+    </div></details>
+    <h4 className="text-lg font-bold">Satış əməliyyatlarının tam tarixçəsi</h4>
     <div className="space-y-3">{sessions.map(session => <article key={session.id} className="overflow-hidden rounded-2xl border border-white/10 bg-white/5"><button onClick={() => setExpanded(value => value === session.id ? null : session.id)} aria-expanded={expanded === session.id} className="flex w-full items-center justify-between gap-3 p-5 text-left"><div><div className="font-bold">{date(session)}</div><div className="mt-1 text-sm text-white/50">{session.project || 'Layihə seçilməyib'} · {status(session)}</div></div><div className="flex items-center gap-3"><span className="tabular-nums text-[#4fbfa3]">{seconds(session.totalDuration)}</span><ChevronDown size={18} className={expanded === session.id ? 'rotate-180' : ''} /></div></button>{expanded === session.id && <RunDetails session={session} />}</article>)}</div>
     {loading && <p role="status" className="text-sm text-white/50">Satış turları yüklənir…</p>}{!loading && !sessions.length && !error && <p className={box}>Satış turu tapılmadı.</p>}{cursor && <button disabled={loading} onClick={() => void load(false)} className="rounded-xl border border-white/15 px-5 py-3 text-sm">Daha çox tur</button>}
   </section>;
